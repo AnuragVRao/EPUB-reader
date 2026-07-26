@@ -196,26 +196,48 @@
   width: 100%;
 }
 
+/* Positioning wrapper only - not clickable itself, so it never steals
+   clicks meant for the page content or the scrollbar beneath it. Only
+   the circular .reader__nav-arrow button inside is interactive. */
 .reader__nav-zone {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 8%;
-  min-width: 36px;
-  max-width: 64px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
+  display: flex;
+  align-items: center;
   z-index: 2;
-  padding: 0;
+  pointer-events: none;
 }
 
 .reader__nav-zone--prev {
-  left: 0;
+  left: 8px;
 }
 
 .reader__nav-zone--next {
-  right: 0;
+  right: 8px;
+}
+
+.reader__nav-arrow {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: 0 1px 4px var(--shadow);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.reader__nav-arrow:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--surface-alt);
 }
 
 .reader__overlay {

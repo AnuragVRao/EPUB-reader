@@ -108,19 +108,43 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         )}
 
         <div className="reader__viewport">
-          <button
-            type="button"
-            className="reader__nav-zone reader__nav-zone--prev"
-            aria-label="Previous page"
-            onClick={() => reader.prev()}
-          />
+          <div className="reader__nav-zone reader__nav-zone--prev">
+            <button
+              type="button"
+              className="reader__nav-arrow"
+              aria-label="Previous page"
+              onClick={() => reader.prev()}
+            >
+              <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+                <path
+                  d="M15 19l-7-7 7-7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
           <div className="reader__container" ref={reader.containerRef} />
-          <button
-            type="button"
-            className="reader__nav-zone reader__nav-zone--next"
-            aria-label="Next page"
-            onClick={() => reader.next()}
-          />
+          <div className="reader__nav-zone reader__nav-zone--next">
+            <button
+              type="button"
+              className="reader__nav-arrow"
+              aria-label="Next page"
+              onClick={() => reader.next()}
+            >
+              <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+                <path
+                  d="M9 5l7 7-7 7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
 
           {reader.loading && (
             <div className="reader__overlay">
