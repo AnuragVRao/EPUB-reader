@@ -1,0 +1,79 @@
+:root {
+  --bg: #f6f4f0;
+  --surface: #ffffff;
+  --surface-alt: #f0eee9;
+  --text: #1c1b19;
+  --text-muted: #6b6863;
+  --border: #dedad2;
+  --accent: #a15c2f;
+  --accent-contrast: #ffffff;
+  --shadow: rgba(28, 27, 25, 0.12);
+  --overlay-bg: rgba(246, 244, 240, 0.85);
+
+  color-scheme: light;
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme='dark'] {
+  --bg: #17181a;
+  --surface: #1f2023;
+  --surface-alt: #26282b;
+  --text: #e7e5e1;
+  --text-muted: #9a9791;
+  --border: #35373b;
+  --accent: #e0a672;
+  --accent-contrast: #17181a;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --overlay-bg: rgba(23, 24, 26, 0.85);
+  color-scheme: dark;
+}
+
+:root[data-theme='sepia'] {
+  --bg: #f1e6cd;
+  --surface: #f8efdb;
+  --surface-alt: #ecdfc0;
+  --text: #3a2f22;
+  --text-muted: #7a6a53;
+  --border: #ddcda3;
+  --accent: #8a5a2b;
+  --accent-contrast: #f8efdb;
+  --shadow: rgba(58, 47, 34, 0.18);
+  --overlay-bg: rgba(241, 230, 205, 0.85);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  height: 100svh;
+  width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
