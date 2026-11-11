@@ -8,10 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Vite dev server
 npm run build    # tsc -b && vite build -> static site in dist/
 npm run lint     # oxlint
+npm run test     # vitest run (npm run test:watch for watch mode)
 npm run preview  # serve the built dist/
 ```
 
-There is no test suite and no CI. `npm run build` type-checks the whole project, so it is the closest thing to a verification step — run it after non-trivial changes.
+Tests (`src/**/*.test.ts`, Vitest in a plain Node environment) cover only the storage layer: `lib/settings.ts` with a stubbed `localStorage`, `lib/db.ts` on `fake-indexeddb`. Nothing exercises React components or epub.js, so `npm run build` (which type-checks the whole project) is still the main verification step for UI and reader changes — run it after non-trivial changes. CI (`.github/workflows/ci.yml`) runs lint, test and build on pushes to `main` and on pull requests.
 
 Two lint warnings are pre-existing and expected (`SettingsContext.tsx` only-export-components, `useEpubReader.ts` exhaustive-deps). Don't treat them as regressions.
 

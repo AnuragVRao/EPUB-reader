@@ -19,6 +19,9 @@ export default function TocSidebar({ toc, currentHref, width, onSelect, onClose,
     (event: React.PointerEvent<HTMLDivElement>) => {
       const startX = event.clientX;
       const startWidth = width;
+      // Without capture the drag dies as soon as the pointer crosses onto the
+      // book's iframe, which swallows pointer events.
+      event.currentTarget.setPointerCapture(event.pointerId);
 
       const handleMove = (moveEvent: PointerEvent) => {
         const next = startWidth + (moveEvent.clientX - startX);
@@ -29,12 +32,14 @@ export default function TocSidebar({ toc, currentHref, width, onSelect, onClose,
         document.body.style.userSelect = '';
         window.removeEventListener('pointermove', handleMove);
         window.removeEventListener('pointerup', handleUp);
+        window.removeEventListener('pointercancel', handleUp);
       };
 
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
       window.addEventListener('pointermove', handleMove);
       window.addEventListener('pointerup', handleUp);
+      window.addEventListener('pointercancel', handleUp);
     },
     [width, onWidthChange],
   );

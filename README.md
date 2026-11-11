@@ -37,3 +37,7 @@ Outputs a static site to `dist/`, which can be hosted on any static file host.
 - React + TypeScript + Vite
 - [epub.js](https://github.com/futurepress/epub.js) for EPUB parsing and rendering
 - IndexedDB (via `idb`) for storing the current book, bookmarks, and reading progress
+
+## Roadmap
+
+Planned and possible work is tracked in [FUTURE_SCOPE.md](FUTURE_SCOPE.md).
