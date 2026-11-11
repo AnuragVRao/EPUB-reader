@@ -288,6 +288,11 @@
   overflow: hidden;
 }
 
+/* Focused programmatically on open; the panel itself needs no focus ring. */
+.side-panel:focus {
+  outline: none;
+}
+
 .side-panel__header {
   display: flex;
   align-items: center;
