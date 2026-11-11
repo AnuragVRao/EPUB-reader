@@ -11,6 +11,7 @@ import {
   saveLocations,
   saveProgress,
 } from '../lib/db';
+import { pageKeyAction, type PageKeyAction } from '../lib/keys';
 import type { Bookmark, ReaderSettings, SearchResult, TocItem } from '../lib/types';
 
 interface FindMatch {
@@ -93,6 +94,29 @@ async function displayAndSettle(rendition: Rendition, cfi: string): Promise<void
   await settled;
 }
 
+function runPageAction(book: Book, rendition: Rendition, action: PageKeyAction): void {
+  switch (action) {
+    case 'next':
+      rendition.next();
+      return;
+    case 'prev':
+      rendition.prev();
+      return;
+    case 'start': {
+      const first = book.spine.first();
+      if (first) rendition.display(first.href).catch(() => {});
+      return;
+    }
+    case 'end': {
+      // The location index knows the book's last position; without it, the
+      // start of the last section is the closest available target.
+      const target = book.locations.length() ? book.locations.cfiFromPercentage(1) : book.spine.last()?.href;
+      if (target) rendition.display(target).catch(() => {});
+      return;
+    }
+  }
+}
+
 const SEARCH_BATCH_SIZE = 4;
 const EXCERPT_LENGTH = 120;
 
@@ -160,6 +184,8 @@ export interface EpubReaderApi {
   percentage: number | null;
   next: () => void;
   prev: () => void;
+  /** Runs a page-turn action: next/prev page, or the start/end of the book. */
+  turn: (action: PageKeyAction) => void;
   goToHref: (href: string) => void;
   goToCfi: (cfi: string) => void;
   toggleBookmark: () => void;
@@ -250,9 +276,11 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     };
     rendition.on('relocated', onRelocated);
 
+    // Keys pressed while focus is inside the book's iframe; ReaderView handles
+    // the same keys for the app shell.
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft') rendition.prev();
-      if (event.key === 'ArrowRight') rendition.next();
+      const action = pageKeyAction(event, settingsRef.current.flow);
+      if (action) runPageAction(book, rendition, action);
     };
     rendition.on('keyup', onKeyUp);
 
@@ -404,13 +432,14 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     });
   }, [settings.flow]);
 
-  const next = useCallback(() => {
-    renditionRef.current?.next();
+  const turn = useCallback((action: PageKeyAction) => {
+    const book = bookRef.current;
+    const rendition = renditionRef.current;
+    if (book && rendition) runPageAction(book, rendition, action);
   }, []);
 
-  const prev = useCallback(() => {
-    renditionRef.current?.prev();
-  }, []);
+  const next = useCallback(() => turn('next'), [turn]);
+  const prev = useCallback(() => turn('prev'), [turn]);
 
   const goToHref = useCallback((href: string) => {
     renditionRef.current?.display(href);
@@ -530,6 +559,7 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     percentage,
     next,
     prev,
+    turn,
     goToHref,
     goToCfi,
     toggleBookmark,

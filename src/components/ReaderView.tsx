@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useEpubReader } from '../hooks/useEpubReader';
 import { useSettings } from '../context/SettingsContext';
+import { pageKeyAction } from '../lib/keys';
 import Toolbar, { type PanelName } from './Toolbar';
 import SidePanel from './SidePanel';
 import TocSidebar from './TocSidebar';
@@ -38,17 +39,14 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         setActivePanel(null);
         return;
       }
-      // Don't turn pages while the user is moving the cursor in a text field
-      // or adjusting a slider.
-      const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || target.closest('input, textarea, select'))) return;
-      if (event.key === 'ArrowLeft') reader.prev();
-      if (event.key === 'ArrowRight') reader.next();
+      // pageKeyAction ignores keys aimed at text fields, sliders and buttons.
+      const action = pageKeyAction(event, settings.flow);
+      if (action) reader.turn(action);
     };
     window.addEventListener('keyup', onKeyUp);
     return () => window.removeEventListener('keyup', onKeyUp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reader.next, reader.prev]);
+  }, [reader.turn, settings.flow]);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
