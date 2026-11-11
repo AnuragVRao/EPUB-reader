@@ -4,17 +4,31 @@ import TocPanel from './TocPanel';
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 520;
+const KEY_STEP = 16;
+
+function clampWidth(width: number): number {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+}
 
 interface TocSidebarProps {
   toc: TocItem[];
   currentHref: string;
+  activeHref: string;
   width: number;
   onSelect: (href: string) => void;
   onClose: () => void;
   onWidthChange: (width: number) => void;
 }
 
-export default function TocSidebar({ toc, currentHref, width, onSelect, onClose, onWidthChange }: TocSidebarProps) {
+export default function TocSidebar({
+  toc,
+  currentHref,
+  activeHref,
+  width,
+  onSelect,
+  onClose,
+  onWidthChange,
+}: TocSidebarProps) {
   const startDragging = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const startX = event.clientX;
@@ -24,8 +38,7 @@ export default function TocSidebar({ toc, currentHref, width, onSelect, onClose,
       event.currentTarget.setPointerCapture(event.pointerId);
 
       const handleMove = (moveEvent: PointerEvent) => {
-        const next = startWidth + (moveEvent.clientX - startX);
-        onWidthChange(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+        onWidthChange(clampWidth(startWidth + (moveEvent.clientX - startX)));
       };
       const handleUp = () => {
         document.body.style.cursor = '';
@@ -44,6 +57,32 @@ export default function TocSidebar({ toc, currentHref, width, onSelect, onClose,
     [width, onWidthChange],
   );
 
+  // Keyboard equivalent of dragging, per the ARIA window-splitter pattern.
+  const handleResizerKey = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      let next: number;
+      switch (event.key) {
+        case 'ArrowLeft':
+          next = width - KEY_STEP;
+          break;
+        case 'ArrowRight':
+          next = width + KEY_STEP;
+          break;
+        case 'Home':
+          next = MIN_WIDTH;
+          break;
+        case 'End':
+          next = MAX_WIDTH;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      onWidthChange(clampWidth(next));
+    },
+    [width, onWidthChange],
+  );
+
   return (
     <div className="toc-sidebar" role="complementary" aria-label="Table of Contents" style={{ width }}>
       <div className="side-panel__header">
@@ -55,14 +94,19 @@ export default function TocSidebar({ toc, currentHref, width, onSelect, onClose,
         </button>
       </div>
       <div className="side-panel__body">
-        <TocPanel toc={toc} currentHref={currentHref} onSelect={onSelect} />
+        <TocPanel toc={toc} currentHref={currentHref} activeHref={activeHref} onSelect={onSelect} />
       </div>
       <div
         className="toc-sidebar__resizer"
         onPointerDown={startDragging}
+        onKeyDown={handleResizerKey}
+        tabIndex={0}
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize table of contents"
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={MAX_WIDTH}
+        aria-valuenow={Math.round(width)}
       />
     </div>
   );

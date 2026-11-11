@@ -400,8 +400,13 @@
   transition: background 0.1s ease;
 }
 
-.toc-sidebar__resizer:hover::after {
+.toc-sidebar__resizer:hover::after,
+.toc-sidebar__resizer:focus-visible::after {
   background: var(--accent);
+}
+
+.toc-sidebar__resizer:focus-visible {
+  outline: none;
 }
 
 /* TOC */

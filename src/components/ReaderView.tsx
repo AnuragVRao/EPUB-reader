@@ -108,6 +108,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
           <TocSidebar
             toc={reader.toc}
             currentHref={reader.currentHref}
+            activeHref={reader.currentTocHref}
             width={settings.tocWidth}
             onSelect={handleSelectHref}
             onClose={handleToggleToc}

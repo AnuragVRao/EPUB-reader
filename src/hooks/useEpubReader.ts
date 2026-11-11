@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import ePub from 'epubjs';
-import type { Book, Rendition, Location, NavItem } from 'epubjs';
+import ePub, { EpubCFI } from 'epubjs';
+import type { Book, Contents, Rendition, Location, NavItem } from 'epubjs';
 import { applyThemeAndFonts, registerThemes } from '../lib/epubThemes';
 import {
   clearOtherBooksData,
@@ -170,6 +170,54 @@ function findChapterLabel(book: Book, href: string): string {
   return found?.label?.trim() ?? '';
 }
 
+function flattenToc(items: NavItem[], out: NavItem[] = []): NavItem[] {
+  for (const item of items) {
+    out.push(item);
+    if (item.subitems?.length) flattenToc(item.subitems, out);
+  }
+  return out;
+}
+
+// Finds the TOC entry the reader is currently inside. Several entries can
+// point into one chapter file (`ch1.xhtml#a`, `ch1.xhtml#b`), so matching on
+// the file alone isn't enough: the entry is the last one whose anchor sits at
+// or before the top of the page. Returns undefined when the TOC has nothing
+// for this file or the lookup fails, and callers fall back to file matching.
+function findActiveTocItem(book: Book, rendition: Rendition, location: Location): NavItem | undefined {
+  try {
+    const file = location.start.href.split('#')[0];
+    const flat = flattenToc(book.navigation.toc);
+    const inFile = flat.filter((item) => item.href && item.href.split('#')[0] === file);
+    if (inFile.length <= 1) return inFile[0];
+
+    const contents = (rendition.getContents() as unknown as Contents[]).find(
+      (c) => c.sectionIndex === location.start.index,
+    );
+    if (!contents?.document) return undefined;
+
+    const cfi = new EpubCFI();
+    let active: NavItem | undefined;
+    for (const item of inFile) {
+      const anchor = item.href.split('#')[1];
+      if (!anchor) {
+        // No anchor: the entry starts with the file.
+        active = item;
+        continue;
+      }
+      const el =
+        contents.document.getElementById(anchor) ?? contents.document.getElementById(decodeURIComponent(anchor));
+      if (el && cfi.compare(contents.cfiFromNode(el), location.start.cfi) <= 0) active = item;
+    }
+    if (active) return active;
+
+    // Above the file's first anchor: still inside whatever entry came before.
+    const firstIndex = flat.indexOf(inFile[0]);
+    return firstIndex > 0 ? flat[firstIndex - 1] : inFile[0];
+  } catch {
+    return undefined;
+  }
+}
+
 export interface EpubReaderApi {
   containerRef: React.RefObject<HTMLDivElement | null>;
   loading: boolean;
@@ -179,6 +227,8 @@ export interface EpubReaderApi {
   toc: TocItem[];
   currentChapterLabel: string;
   currentHref: string;
+  /** Href of the TOC entry the reader is inside, or '' when it can't be told apart from its siblings. */
+  currentTocHref: string;
   bookmarks: Bookmark[];
   isCurrentBookmarked: boolean;
   /** Fraction of the book read (0-1), or null until the location index is ready. */
@@ -233,6 +283,7 @@ export function useEpubReader(
   const [toc, setToc] = useState<TocItem[]>([]);
   const [currentChapterLabel, setCurrentChapterLabel] = useState('');
   const [currentHref, setCurrentHref] = useState('');
+  const [currentTocHref, setCurrentTocHref] = useState('');
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [currentCfi, setCurrentCfi] = useState('');
   const [percentage, setPercentage] = useState<number | null>(null);
@@ -248,6 +299,7 @@ export function useEpubReader(
     setToc([]);
     setBookmarks([]);
     setCurrentChapterLabel('');
+    setCurrentTocHref('');
     setPercentage(null);
 
     const book = ePub(data.slice(0));
@@ -285,7 +337,9 @@ export function useEpubReader(
       if (!relayoutActiveRef.current && !resizePendingRef.current) anchorCfiRef.current = cfi;
       setCurrentCfi(cfi);
       setCurrentHref(location.start.href);
-      setCurrentChapterLabel(findChapterLabel(book, location.start.href));
+      const tocItem = findActiveTocItem(book, rendition, location);
+      setCurrentTocHref(tocItem?.href ?? '');
+      setCurrentChapterLabel(tocItem?.label.trim() || findChapterLabel(book, location.start.href));
       // Report and persist the anchored position rather than this page's
       // start: the anchor is on screen either way, but it doesn't shift with
       // panel width or font size, so the % stays stable and a reload under a
@@ -578,6 +632,7 @@ export function useEpubReader(
     toc,
     currentChapterLabel,
     currentHref,
+    currentTocHref,
     bookmarks,
     isCurrentBookmarked,
     percentage,
