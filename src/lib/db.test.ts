@@ -149,3 +149,216 @@ describe('clearOtherBooksData', () => {
     expect((await db.loadCurrentBook())?.filename).toBe('a.epub');
   });
 });
+
+function shelfBook(bookId: string, bytes = 4) {
+  return { bookId, filename: `${bookId}.epub`, data: new ArrayBuffer(bytes), title: `Title ${bookId}`, author: 'Author' };
+}
+
+const ROOMY = { maxBooks: 100, maxBytes: 1_000_000 };
+
+describe('library', () => {
+  it('is empty until a book is added', async () => {
+    expect(await db.listLibrary()).toEqual([]);
+  });
+
+  it('lists books most recently opened first, with their progress', async () => {
+    await db.addBookToLibrary(shelfBook('a', 10), ROOMY, 100);
+    await db.addBookToLibrary(shelfBook('b', 20), ROOMY, 200);
+    await db.saveProgress({ bookId: 'a', cfi: 'cfi', percentage: 0.4, updatedAt: 1 });
+
+    const shelf = await db.listLibrary();
+    expect(shelf.map((book) => book.bookId)).toEqual(['b', 'a']);
+    expect(shelf[0]).toMatchObject({ title: 'Title b', author: 'Author', size: 20, percentage: null });
+    expect(shelf[1]).toMatchObject({ filename: 'a.epub', size: 10, percentage: 0.4, addedAt: 100, lastOpenedAt: 100 });
+  });
+
+  it('re-adding a book refreshes it without losing when it was added or its cover', async () => {
+    const cover = { data: new ArrayBuffer(3), type: 'image/jpeg' };
+    await db.addBookToLibrary({ ...shelfBook('a'), cover }, ROOMY, 100);
+    await db.addBookToLibrary(shelfBook('b'), ROOMY, 200);
+    await db.addBookToLibrary({ ...shelfBook('a'), title: 'Renamed' }, ROOMY, 300);
+
+    const shelf = await db.listLibrary();
+    expect(shelf.map((book) => book.bookId)).toEqual(['a', 'b']);
+    expect(shelf[0]).toMatchObject({ title: 'Renamed', addedAt: 100, lastOpenedAt: 300 });
+    expect(shelf[0].cover?.type).toBe('image/jpeg');
+    expect(shelf[0].cover?.data.byteLength).toBe(3);
+  });
+
+  it('opens a shelved book and makes it the one restored on the next load', async () => {
+    await db.addBookToLibrary(shelfBook('a', 10), ROOMY, 100);
+    await db.addBookToLibrary(shelfBook('b', 20), ROOMY, 200);
+    expect(await db.loadCurrentBook()).toBeUndefined();
+
+    const opened = await db.openLibraryBook('a');
+    expect(opened?.filename).toBe('a.epub');
+    expect(opened?.data.byteLength).toBe(10);
+
+    const restored = await db.loadCurrentBook();
+    expect(restored?.filename).toBe('a.epub');
+    expect(restored?.data.byteLength).toBe(10);
+  });
+
+  it('returns undefined for a book that is not on the shelf', async () => {
+    expect(await db.openLibraryBook('nope')).toBeUndefined();
+    expect(await db.loadCurrentBook()).toBeUndefined();
+  });
+
+  it('moves the dropped file onto the shelf once the reader identifies it', async () => {
+    await db.saveCurrentBook({ filename: 'a.epub', data: new ArrayBuffer(10), savedAt: 1 });
+    await db.addBookToLibrary(shelfBook('a', 10), ROOMY, 100);
+
+    // Still restorable, now through the shelf...
+    expect((await db.loadCurrentBook())?.data.byteLength).toBe(10);
+    // ...so removing it from the shelf leaves nothing to restore.
+    await db.removeLibraryBook('a');
+    expect(await db.loadCurrentBook()).toBeUndefined();
+  });
+
+  it('does not repoint the current book when a different file is pending', async () => {
+    // "b" was dropped while "a" was still loading; "a" is then shelved late.
+    await db.saveCurrentBook({ filename: 'b.epub', data: new ArrayBuffer(20), savedAt: 2 });
+    await db.addBookToLibrary(shelfBook('a', 10), ROOMY, 100);
+
+    expect((await db.loadCurrentBook())?.filename).toBe('b.epub');
+    await db.removeLibraryBook('a');
+    expect((await db.loadCurrentBook())?.filename).toBe('b.epub');
+  });
+
+  it('closing the book keeps it on the shelf', async () => {
+    await db.saveCurrentBook({ filename: 'a.epub', data: new ArrayBuffer(10), savedAt: 1 });
+    await db.addBookToLibrary(shelfBook('a', 10), ROOMY, 100);
+    await db.clearCurrentBook();
+
+    expect(await db.loadCurrentBook()).toBeUndefined();
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['a']);
+    expect((await db.openLibraryBook('a'))?.data.byteLength).toBe(10);
+  });
+
+  it('removing a book deletes its file but keeps its bookmarks and position', async () => {
+    await db.addBookToLibrary(shelfBook('a'), ROOMY, 100);
+    await db.addBookToLibrary(shelfBook('b'), ROOMY, 200);
+    await db.saveBookmarks('a', [bookmark('1')]);
+    await db.saveProgress({ bookId: 'a', cfi: 'cfi', percentage: 0.4, updatedAt: 1 });
+
+    await db.removeLibraryBook('a');
+
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['b']);
+    expect(await db.openLibraryBook('a')).toBeUndefined();
+    expect(await db.getBookmarks('a')).toHaveLength(1);
+    expect((await db.getProgress('a'))?.percentage).toBe(0.4);
+  });
+
+  it('clearing other books\' data leaves the shelf alone', async () => {
+    await db.addBookToLibrary(shelfBook('a'), ROOMY, 100);
+    await db.clearOtherBooksData('keep');
+    expect((await db.openLibraryBook('a'))?.filename).toBe('a.epub');
+  });
+});
+
+describe('library eviction', () => {
+  it('drops the least recently opened books beyond the book limit', async () => {
+    const limits = { maxBooks: 2, maxBytes: 1_000_000 };
+    expect(await db.addBookToLibrary(shelfBook('a'), limits, 100)).toEqual([]);
+    expect(await db.addBookToLibrary(shelfBook('b'), limits, 200)).toEqual([]);
+    expect(await db.addBookToLibrary(shelfBook('c'), limits, 300)).toEqual(['a']);
+
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['c', 'b']);
+    expect(await db.openLibraryBook('a')).toBeUndefined();
+  });
+
+  it('goes by when a book was last opened, not when it was added', async () => {
+    const limits = { maxBooks: 2, maxBytes: 1_000_000 };
+    await db.addBookToLibrary(shelfBook('a'), limits, 100);
+    await db.addBookToLibrary(shelfBook('b'), limits, 200);
+    await db.addBookToLibrary(shelfBook('a'), limits, 300);
+    expect(await db.addBookToLibrary(shelfBook('c'), limits, 400)).toEqual(['b']);
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['c', 'a']);
+  });
+
+  it('drops as many old books as it takes to get under the byte budget', async () => {
+    const limits = { maxBooks: 100, maxBytes: 100 };
+    await db.addBookToLibrary(shelfBook('a', 40), limits, 100);
+    await db.addBookToLibrary(shelfBook('b', 40), limits, 200);
+    await db.addBookToLibrary(shelfBook('c', 20), limits, 300);
+    expect(await db.addBookToLibrary(shelfBook('d', 70), limits, 400)).toEqual(['a', 'b']);
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['d', 'c']);
+  });
+
+  it('keeps the book being opened even when it alone is over budget', async () => {
+    const limits = { maxBooks: 100, maxBytes: 100 };
+    await db.addBookToLibrary(shelfBook('a', 40), limits, 100);
+    expect(await db.addBookToLibrary(shelfBook('huge', 500), limits, 200)).toEqual(['a']);
+    expect((await db.listLibrary()).map((book) => book.bookId)).toEqual(['huge']);
+    expect((await db.openLibraryBook('huge'))?.data.byteLength).toBe(500);
+  });
+
+  it('keeps an evicted book\'s bookmarks and position', async () => {
+    const limits = { maxBooks: 1, maxBytes: 1_000_000 };
+    await db.addBookToLibrary(shelfBook('a'), limits, 100);
+    await db.saveBookmarks('a', [bookmark('1')]);
+    await db.saveProgress({ bookId: 'a', cfi: 'cfi', percentage: 0.4, updatedAt: 1 });
+    await db.addBookToLibrary(shelfBook('b'), limits, 200);
+
+    expect(await db.getBookmarks('a')).toHaveLength(1);
+    expect((await db.getProgress('a'))?.percentage).toBe(0.4);
+  });
+});
+
+describe('upgrade from schema v1', () => {
+  // Builds the database the way version 1 of the app left it.
+  async function seedV1() {
+    vi.resetModules();
+    const factory = new IDBFactory();
+    vi.stubGlobal('indexedDB', factory);
+    await new Promise<void>((resolve, reject) => {
+      const request = factory.open('epub-reader-db', 1);
+      request.onupgradeneeded = () => {
+        for (const name of ['currentBook', 'bookmarks', 'progress', 'locations']) {
+          request.result.createObjectStore(name);
+        }
+      };
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const v1 = request.result;
+        const tx = v1.transaction(['currentBook', 'bookmarks', 'progress', 'locations'], 'readwrite');
+        tx.objectStore('currentBook').put({ filename: 'old.epub', data: new ArrayBuffer(16), savedAt: 5 }, 'singleton');
+        tx.objectStore('bookmarks').put({ bookId: 'old', items: [bookmark('1')] }, 'old');
+        tx.objectStore('progress').put({ bookId: 'old', cfi: 'cfi', percentage: 0.6, updatedAt: 7 }, 'old');
+        tx.objectStore('locations').put({ bookId: 'old', locations: '["loc"]' }, 'old');
+        tx.oncomplete = () => {
+          v1.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    return import('./db');
+  }
+
+  it('keeps the open book and all per-book data', async () => {
+    const upgraded = await seedV1();
+
+    const current = await upgraded.loadCurrentBook();
+    expect(current?.filename).toBe('old.epub');
+    expect(current?.data.byteLength).toBe(16);
+    expect(await upgraded.getBookmarks('old')).toHaveLength(1);
+    expect((await upgraded.getProgress('old'))?.percentage).toBe(0.6);
+    expect(await upgraded.getLocations('old')).toBe('["loc"]');
+  });
+
+  it('starts with an empty shelf that the open book then joins', async () => {
+    const upgraded = await seedV1();
+    expect(await upgraded.listLibrary()).toEqual([]);
+
+    // What the reader does once it has opened the restored file.
+    await upgraded.addBookToLibrary(
+      { bookId: 'old', filename: 'old.epub', data: new ArrayBuffer(16), title: 'Old', author: '' },
+      ROOMY,
+      100,
+    );
+
+    expect(await upgraded.listLibrary()).toMatchObject([{ bookId: 'old', size: 16, percentage: 0.6 }]);
+    expect((await upgraded.loadCurrentBook())?.data.byteLength).toBe(16);
+  });
+});

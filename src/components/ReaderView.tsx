@@ -23,7 +23,7 @@ const PANEL_TITLES: Record<PanelName, string> = {
 
 export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewProps) {
   const { settings, theme, updateSettings } = useSettings();
-  const reader = useEpubReader(data, settings, theme);
+  const reader = useEpubReader(data, settings, theme, fallbackTitle);
   const [activePanel, setActivePanel] = useState<PanelName | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 

@@ -7,6 +7,8 @@ import BookDropOverlay from './components/BookDropOverlay';
 // once there's a book to show so the drop zone appears quickly.
 const ReaderView = lazy(() => import('./components/ReaderView'));
 import { clearCurrentBook, loadCurrentBook, saveCurrentBook } from './lib/db';
+import { openLibraryBook } from './lib/db';
+import Library from './components/Library';
 import './App.css';
 
 function App() {
@@ -72,6 +74,23 @@ function App() {
     clearCurrentBook().catch((err: unknown) => console.warn('Could not clear the stored book', err));
   }, []);
 
+  const handleOpenFromLibrary = useCallback(async (bookId: string) => {
+    setError(null);
+    try {
+      const stored = await openLibraryBook(bookId);
+      if (!stored) {
+        setError('That book is no longer stored in this browser. Drop the file again to read it.');
+        return;
+      }
+      setFilename(stored.filename);
+      setBookData(stored.data);
+      setBookVersion((v) => v + 1);
+    } catch (err) {
+      console.warn('Could not open the stored book', err);
+      setError('Could not open that book from storage.');
+    }
+  }, []);
+
   return (
     <SettingsProvider>
       <div className="app">
@@ -95,7 +114,9 @@ function App() {
             )}
           </Suspense>
         ) : (
-          <DropZone onFile={handleFile} error={error} />
+          <DropZone onFile={handleFile} error={error}>
+            <Library onOpen={handleOpenFromLibrary} />
+          </DropZone>
         )}
       </div>
     </SettingsProvider>

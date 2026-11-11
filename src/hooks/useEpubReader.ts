@@ -16,6 +16,41 @@ import {
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
 import type { Bookmark, ReaderSettings, SavedBookInfo, SearchResult, ThemeName, TocItem } from '../lib/types';
+import { addBookToLibrary } from '../lib/db';
+import { prepareCover } from '../lib/cover';
+
+// Puts the open book on the shelf (or marks it as just opened) so it can be
+// reopened from the start screen without the file.
+async function shelveBook(book: Book, bookId: string, data: ArrayBuffer, filename: string): Promise<void> {
+  try {
+    const { title = '', creator = '' } = book.packaging?.metadata ?? {};
+    let cover: Blob | undefined;
+    try {
+      await book.loaded.cover;
+      // `book.cover` is the cover's path inside the archive. Reading it from
+      // the archive avoids fetching the blob URL that coverUrl() would make.
+      const source = book as unknown as {
+        cover?: string;
+        archive?: { getBlob: (url: string) => Promise<Blob> | undefined };
+      };
+      if (source.cover && source.archive) cover = await source.archive.getBlob(source.cover);
+    } catch {
+      // No readable cover (or the book was closed meanwhile): shelve without.
+    }
+    await addBookToLibrary({
+      bookId,
+      filename,
+      data,
+      title,
+      author: creator,
+      cover: cover ? await prepareCover(cover) : undefined,
+    });
+  } catch (err) {
+    // Storage full or unavailable. The book stays readable; it just won't be
+    // on the shelf.
+    console.warn('Could not add the book to the library', err);
+  }
+}
 
 interface FindMatch {
   cfi: string;
@@ -266,7 +301,11 @@ export function useEpubReader(
   settings: ReaderSettings,
   /** The resolved theme to render (`settings.theme` may be 'auto'). */
   theme: ThemeName,
+  /** Name of the file `data` came from, recorded with the book on the shelf. */
+  filename: string = '',
 ): EpubReaderApi {
+  const filenameRef = useRef(filename);
+  filenameRef.current = filename;
   const containerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -466,6 +505,8 @@ export function useEpubReader(
         if (cancelled) return;
         refreshPercentage();
         setLoading(false);
+        // Only once a page has rendered, so a broken EPUB never reaches the shelf.
+        void shelveBook(book, bookId, data, filenameRef.current);
       } catch (err) {
         console.error('Failed to open EPUB', err);
         if (!cancelled) {

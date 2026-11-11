@@ -1,11 +1,13 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 
 interface DropZoneProps {
   onFile: (file: File) => void;
   error: string | null;
+  /** Shown below the drop card, inside the drop target (the shelf of saved books). */
+  children?: ReactNode;
 }
 
-export default function DropZone({ onFile, error }: DropZoneProps) {
+export default function DropZone({ onFile, error, children }: DropZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +81,7 @@ export default function DropZone({ onFile, error }: DropZoneProps) {
         />
         {error && <p className="drop-zone__error">{error}</p>}
       </div>
+      {children}
     </div>
   );
 }
