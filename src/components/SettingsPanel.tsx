@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SavedBook } from '../hooks/useEpubReader';
 import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode } from '../lib/types';
 
 interface SettingsPanelProps {
   settings: ReaderSettings;
   onChange: (patch: Partial<ReaderSettings>) => void;
   onClearOtherBooks: () => Promise<number>;
+  onListSavedBooks: () => Promise<SavedBook[]>;
+  onRemoveSavedBook: (bookId: string) => Promise<void>;
 }
 
 const THEMES: { value: ThemeSetting; label: string }[] = [
@@ -26,7 +29,13 @@ const FLOWS: { value: FlowMode; label: string }[] = [
   { value: 'scrolled', label: 'Scrolled' },
 ];
 
-export default function SettingsPanel({ settings, onChange, onClearOtherBooks }: SettingsPanelProps) {
+export default function SettingsPanel({
+  settings,
+  onChange,
+  onClearOtherBooks,
+  onListSavedBooks,
+  onRemoveSavedBook,
+}: SettingsPanelProps) {
   return (
     <div className="settings-panel">
       <section className="settings-section">
@@ -127,9 +136,102 @@ export default function SettingsPanel({ settings, onChange, onClearOtherBooks }:
 
       <section className="settings-section">
         <h3>Saved data</h3>
-        <ClearOtherBooksButton onClear={onClearOtherBooks} />
+        <SavedData onList={onListSavedBooks} onRemove={onRemoveSavedBook} onClearOthers={onClearOtherBooks} />
       </section>
     </div>
+  );
+}
+
+function describeSavedBook(book: SavedBook): string {
+  const parts: string[] = [];
+  if (book.percentage !== null) parts.push(`${Math.round(book.percentage * 100)}% read`);
+  if (book.bookmarkCount > 0) parts.push(`${book.bookmarkCount} ${book.bookmarkCount === 1 ? 'bookmark' : 'bookmarks'}`);
+  if (book.updatedAt !== null) parts.push(`last read ${new Date(book.updatedAt).toLocaleDateString()}`);
+  return parts.join(' · ') || 'Page index only';
+}
+
+// Lists the books that have bookmarks or a reading position stored in this
+// browser, with a way to remove them one at a time or all at once.
+function SavedData({
+  onList,
+  onRemove,
+  onClearOthers,
+}: {
+  onList: () => Promise<SavedBook[]>;
+  onRemove: (bookId: string) => Promise<void>;
+  onClearOthers: () => Promise<number>;
+}) {
+  // null while loading; 'error' when IndexedDB could not be read.
+  const [books, setBooks] = useState<SavedBook[] | 'error' | null>(null);
+  const mountedRef = useRef(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const list = await onList();
+      if (mountedRef.current) setBooks(list);
+    } catch {
+      if (mountedRef.current) setBooks('error');
+    }
+  }, [onList]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void refresh();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [refresh]);
+
+  const remove = async (bookId: string) => {
+    try {
+      await onRemove(bookId);
+    } finally {
+      await refresh();
+    }
+  };
+
+  const clearOthers = async () => {
+    try {
+      return await onClearOthers();
+    } finally {
+      await refresh();
+    }
+  };
+
+  return (
+    <>
+      {books === 'error' && <p className="clear-data__hint">Could not read saved data.</p>}
+      {Array.isArray(books) && books.length === 0 && <p className="clear-data__hint">Nothing is saved yet.</p>}
+      {Array.isArray(books) && books.length > 0 && (
+        <ul className="saved-books">
+          {books.map((book) => (
+            <li key={book.bookId} className="saved-book">
+              <div className="saved-book__text">
+                <span className="saved-book__title">
+                  {book.title || 'Unknown book'}
+                  {book.current && <span className="saved-book__badge">Open</span>}
+                </span>
+                <span className="saved-book__meta">{describeSavedBook(book)}</span>
+              </div>
+              {!book.current && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Remove saved data for ${book.title || 'unknown book'}`}
+                  title="Remove this book's bookmarks and reading position"
+                  onClick={() => void remove(book.bookId)}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" width="16" height="16" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ClearOtherBooksButton onClear={clearOthers} />
+    </>
   );
 }
 

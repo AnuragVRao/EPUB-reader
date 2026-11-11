@@ -36,6 +36,20 @@ export interface Progress {
   cfi: string;
   percentage: number;
   updatedAt: number;
+  /** The book's title, so its saved data can be named without the file. Absent on records from older versions. */
+  title?: string;
+}
+
+/** What is stored for one book, summarised across the per-book stores. */
+export interface SavedBookInfo {
+  bookId: string;
+  title?: string;
+  bookmarkCount: number;
+  /** Fraction read (0-1), or null when no reading position is stored. */
+  percentage: number | null;
+  /** When the reading position was last saved, or null when none is stored. */
+  updatedAt: number | null;
+  hasLocations: boolean;
 }
 
 export interface StoredLocations {

@@ -64,6 +64,54 @@ describe('per-book data', () => {
   });
 });
 
+describe('listSavedBooks', () => {
+  it('is empty when nothing is stored', async () => {
+    expect(await db.listSavedBooks()).toEqual([]);
+  });
+
+  it('summarises each book across the stores, most recently read first', async () => {
+    await db.saveBookmarks('book-a', [bookmark('1'), bookmark('2')]);
+    await db.saveProgress({ bookId: 'book-a', cfi: 'cfi-a', percentage: 0.25, updatedAt: 100, title: 'Book A' });
+    await db.saveLocations('book-a', '["loc"]');
+    await db.saveProgress({ bookId: 'book-b', cfi: 'cfi-b', percentage: 0.9, updatedAt: 200 });
+    // Only a location index: no position, so it sorts last.
+    await db.saveLocations('book-c', '["loc"]');
+
+    expect(await db.listSavedBooks()).toEqual([
+      { bookId: 'book-b', bookmarkCount: 0, percentage: 0.9, updatedAt: 200, hasLocations: false },
+      { bookId: 'book-a', title: 'Book A', bookmarkCount: 2, percentage: 0.25, updatedAt: 100, hasLocations: true },
+      { bookId: 'book-c', bookmarkCount: 0, percentage: null, updatedAt: null, hasLocations: true },
+    ]);
+  });
+
+  it('does not count the open book file as saved data', async () => {
+    await db.saveCurrentBook({ filename: 'a.epub', data: new ArrayBuffer(4), savedAt: 1 });
+    expect(await db.listSavedBooks()).toEqual([]);
+  });
+});
+
+describe('deleteBookData', () => {
+  it('removes one book from every store and leaves the others', async () => {
+    for (const id of ['gone', 'kept']) {
+      await db.saveBookmarks(id, [bookmark('1')]);
+      await db.saveProgress({ bookId: id, cfi: 'cfi', percentage: 0.5, updatedAt: 1 });
+      await db.saveLocations(id, '["loc"]');
+    }
+
+    await db.deleteBookData('gone');
+
+    expect(await db.getBookmarks('gone')).toEqual([]);
+    expect(await db.getProgress('gone')).toBeUndefined();
+    expect(await db.getLocations('gone')).toBeUndefined();
+    expect((await db.listSavedBooks()).map((b) => b.bookId)).toEqual(['kept']);
+    expect(await db.getBookmarks('kept')).toHaveLength(1);
+  });
+
+  it('is a no-op for a book with no data', async () => {
+    await expect(db.deleteBookData('nope')).resolves.toBeUndefined();
+  });
+});
+
 describe('clearOtherBooksData', () => {
   it('removes every other book and keeps the current one', async () => {
     await db.saveBookmarks('keep', [bookmark('1')]);

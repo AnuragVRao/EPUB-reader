@@ -4,16 +4,18 @@ import type { Book, Contents, Rendition, Location, NavItem } from 'epubjs';
 import { applyThemeAndFonts, registerThemes } from '../lib/epubThemes';
 import {
   clearOtherBooksData,
+  deleteBookData,
   getBookmarks,
   getLocations,
   getProgress,
+  listSavedBooks,
   saveBookmarks,
   saveLocations,
   saveProgress,
 } from '../lib/db';
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
-import type { Bookmark, ReaderSettings, SearchResult, ThemeName, TocItem } from '../lib/types';
+import type { Bookmark, ReaderSettings, SavedBookInfo, SearchResult, ThemeName, TocItem } from '../lib/types';
 
 interface FindMatch {
   cfi: string;
@@ -218,6 +220,11 @@ function findActiveTocItem(book: Book, rendition: Rendition, location: Location)
   }
 }
 
+export interface SavedBook extends SavedBookInfo {
+  /** True for the book currently open in the reader. */
+  current: boolean;
+}
+
 export type BookmarkPatch = Partial<Pick<Bookmark, 'label' | 'note'>>;
 
 export interface EpubReaderApi {
@@ -248,6 +255,10 @@ export interface EpubReaderApi {
   search: (query: string, options?: SearchOptions) => Promise<SearchResult[]>;
   /** Deletes bookmarks/progress/locations for every book except this one. Returns how many books were cleared. */
   clearOtherBooks: () => Promise<number>;
+  /** Lists every book with saved data, flagging the one that is open. */
+  listSavedBooks: () => Promise<SavedBook[]>;
+  /** Deletes one other book's bookmarks/progress/locations. The open book is refused. */
+  removeSavedBook: (bookId: string) => Promise<void>;
 }
 
 export function useEpubReader(
@@ -353,7 +364,13 @@ export function useEpubReader(
       setPercentage(pct);
       const bid = bookIdRef.current;
       if (bid) {
-        saveProgress({ bookId: bid, cfi: position, percentage: pct ?? 0, updatedAt: Date.now() });
+        saveProgress({
+          bookId: bid,
+          cfi: position,
+          percentage: pct ?? 0,
+          updatedAt: Date.now(),
+          title: book.packaging?.metadata?.title || undefined,
+        });
       }
     };
     rendition.on('relocated', onRelocated);
@@ -646,6 +663,18 @@ export function useEpubReader(
     return clearOtherBooksData(bookId);
   }, []);
 
+  const listSaved = useCallback(async (): Promise<SavedBook[]> => {
+    const books = await listSavedBooks();
+    return books.map((book) => ({ ...book, current: book.bookId === bookIdRef.current }));
+  }, []);
+
+  const removeSavedBook = useCallback(async (bookId: string) => {
+    // The open book keeps writing its position; deleting it here would only
+    // have it reappear on the next page turn.
+    if (!bookId || bookId === bookIdRef.current) return;
+    await deleteBookData(bookId);
+  }, []);
+
   const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
 
   return {
@@ -671,5 +700,7 @@ export function useEpubReader(
     updateBookmark,
     search,
     clearOtherBooks,
+    listSavedBooks: listSaved,
+    removeSavedBook,
   };
 }

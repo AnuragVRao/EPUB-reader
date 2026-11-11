@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Bookmark, Progress, StoredBook, StoredLocations } from './types';
+import type { Bookmark, Progress, SavedBookInfo, StoredBook, StoredLocations } from './types';
 
 const CURRENT_BOOK_KEY = 'singleton';
 
@@ -105,6 +105,48 @@ export async function clearOtherBooksData(keepBookId: string): Promise<number> {
   );
   await tx.done;
   return removed.size;
+}
+
+// Lists every book that has bookmarks, a reading position or a cached
+// location index, most recently read first.
+export async function listSavedBooks(): Promise<SavedBookInfo[]> {
+  const db = await getDB();
+  const tx = db.transaction(['bookmarks', 'progress', 'locations'], 'readonly');
+  const [bookmarks, progress, locationKeys] = await Promise.all([
+    tx.objectStore('bookmarks').getAll(),
+    tx.objectStore('progress').getAll(),
+    tx.objectStore('locations').getAllKeys(),
+  ]);
+  await tx.done;
+
+  const books = new Map<string, SavedBookInfo>();
+  const entry = (bookId: string): SavedBookInfo => {
+    let info = books.get(bookId);
+    if (!info) {
+      info = { bookId, bookmarkCount: 0, percentage: null, updatedAt: null, hasLocations: false };
+      books.set(bookId, info);
+    }
+    return info;
+  };
+  for (const record of bookmarks) entry(record.bookId).bookmarkCount = record.items.length;
+  for (const record of progress) {
+    const info = entry(record.bookId);
+    info.percentage = record.percentage;
+    info.updatedAt = record.updatedAt;
+    if (record.title) info.title = record.title;
+  }
+  for (const bookId of locationKeys) entry(bookId).hasLocations = true;
+
+  return [...books.values()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+// Removes one book's bookmarks, progress and cached locations.
+export async function deleteBookData(bookId: string): Promise<void> {
+  const db = await getDB();
+  const stores = ['bookmarks', 'progress', 'locations'] as const;
+  const tx = db.transaction(stores, 'readwrite');
+  await Promise.all(stores.map((name) => tx.objectStore(name).delete(bookId)));
+  await tx.done;
 }
 
 export async function getLocations(bookId: string): Promise<string | undefined> {

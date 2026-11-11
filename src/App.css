@@ -735,6 +735,53 @@ input[type='range'] {
   margin: -8px 0 12px;
 }
 
+/* Saved data */
+
+.saved-books {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.saved-book {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+}
+
+.saved-book__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.saved-book__title {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-book__badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.7rem;
+  vertical-align: 1px;
+}
+
+.saved-book__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* Clear saved data */
 
 .clear-data__hint {

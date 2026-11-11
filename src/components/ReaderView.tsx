@@ -201,6 +201,8 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 settings={settings}
                 onChange={updateSettings}
                 onClearOtherBooks={reader.clearOtherBooks}
+                onListSavedBooks={reader.listSavedBooks}
+                onRemoveSavedBook={reader.removeSavedBook}
               />
             )}
           </SidePanel>
