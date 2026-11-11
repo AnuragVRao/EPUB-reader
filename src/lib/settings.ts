@@ -1,9 +1,9 @@
-import type { FlowMode, FontFamily, ReaderSettings, ThemeName } from './types';
+import type { FlowMode, FontFamily, ReaderSettings, ThemeName, ThemeSetting } from './types';
 
 const SETTINGS_KEY = 'epub-reader-settings';
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
-  theme: 'light',
+  theme: 'auto',
   fontSize: 100,
   fontFamily: 'system',
   flow: 'paginated',
@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   tocWidth: 300,
 };
 
-const THEMES: readonly ThemeName[] = ['light', 'dark', 'sepia'];
+const THEMES: readonly ThemeSetting[] = ['auto', 'light', 'dark', 'sepia'];
 const FONTS: readonly FontFamily[] = ['system', 'serif', 'sans', 'dyslexic'];
 const FLOWS: readonly FlowMode[] = ['paginated', 'scrolled'];
 
@@ -47,6 +47,12 @@ function sanitize(raw: unknown): ReaderSettings {
     tocOpen: bool(s.tocOpen, d.tocOpen),
     tocWidth: numberIn(s.tocWidth, 200, 520, d.tocWidth),
   };
+}
+
+/** The theme to actually render: 'auto' follows the OS preference. */
+export function resolveTheme(setting: ThemeSetting, prefersDark: boolean): ThemeName {
+  if (setting !== 'auto') return setting;
+  return prefersDark ? 'dark' : 'light';
 }
 
 export function loadSettings(): ReaderSettings {

@@ -13,7 +13,7 @@ import {
 } from '../lib/db';
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
-import type { Bookmark, ReaderSettings, SearchResult, TocItem } from '../lib/types';
+import type { Bookmark, ReaderSettings, SearchResult, ThemeName, TocItem } from '../lib/types';
 
 interface FindMatch {
   cfi: string;
@@ -196,7 +196,12 @@ export interface EpubReaderApi {
   clearOtherBooks: () => Promise<number>;
 }
 
-export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings): EpubReaderApi {
+export function useEpubReader(
+  data: ArrayBuffer | null,
+  settings: ReaderSettings,
+  /** The resolved theme to render (`settings.theme` may be 'auto'). */
+  theme: ThemeName,
+): EpubReaderApi {
   const containerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -216,6 +221,8 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
   const resizeGenerationRef = useRef(0);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const relayoutChainRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -254,7 +261,7 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     });
     renditionRef.current = rendition;
     registerThemes(rendition);
-    applyThemeAndFonts(rendition, settingsRef.current);
+    applyThemeAndFonts(rendition, settingsRef.current, themeRef.current);
 
     // Drag events over the book stay inside its iframe. Tell the app when a
     // file is dragged in so it can raise its drop overlay, and stop the
@@ -415,7 +422,7 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     const rendition = renditionRef.current;
     if (!rendition) return;
     if (!bookIdRef.current) {
-      applyThemeAndFonts(rendition, settings);
+      applyThemeAndFonts(rendition, settings, theme);
       return;
     }
     // Font/size/spacing changes reflow the text, and epub.js keeps the old
@@ -423,12 +430,12 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     // can't race one, and return to the anchored position afterwards.
     enqueueRelayout(relayoutChainRef, relayoutActiveRef, rendition, async () => {
       const reflowed = nextRelocated(rendition);
-      applyThemeAndFonts(rendition, settings);
+      applyThemeAndFonts(rendition, settings, theme);
       await reflowed;
       const anchor = anchorCfiRef.current;
       if (anchor && bookIdRef.current) await displayAndSettle(rendition, anchor);
     });
-  }, [settings.theme, settings.fontSize, settings.fontFamily, settings.lineSpacing, settings.justify]);
+  }, [theme, settings.fontSize, settings.fontFamily, settings.lineSpacing, settings.justify]);
 
   useEffect(() => {
     const rendition = renditionRef.current;

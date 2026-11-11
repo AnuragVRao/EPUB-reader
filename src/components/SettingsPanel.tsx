@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReaderSettings, ThemeName, FontFamily, FlowMode } from '../lib/types';
+import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode } from '../lib/types';
 
 interface SettingsPanelProps {
   settings: ReaderSettings;
@@ -7,7 +7,8 @@ interface SettingsPanelProps {
   onClearOtherBooks: () => Promise<number>;
 }
 
-const THEMES: { value: ThemeName; label: string }[] = [
+const THEMES: { value: ThemeSetting; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
   { value: 'sepia', label: 'Sepia' },
@@ -37,6 +38,7 @@ export default function SettingsPanel({ settings, onChange, onClearOtherBooks }:
               type="button"
               className={`segmented__btn ${settings.theme === t.value ? 'segmented__btn--active' : ''}`}
               onClick={() => onChange({ theme: t.value })}
+              title={t.value === 'auto' ? 'Follow the system light or dark setting' : undefined}
             >
               {t.label}
             </button>

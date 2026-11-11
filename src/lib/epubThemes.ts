@@ -1,5 +1,5 @@
 import type { Rendition } from 'epubjs';
-import type { ReaderSettings } from './types';
+import type { ReaderSettings, ThemeName } from './types';
 import dyslexic400 from '@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2?url';
 import dyslexic400Italic from '@fontsource/opendyslexic/files/opendyslexic-latin-400-italic.woff2?url';
 import dyslexic700 from '@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2?url';
@@ -76,8 +76,10 @@ export function registerThemes(rendition: Rendition): void {
   });
 }
 
-export function applyThemeAndFonts(rendition: Rendition, settings: ReaderSettings): void {
-  rendition.themes.select(settings.theme);
+// `theme` is the resolved theme - `settings.theme` may be 'auto', which
+// epub.js has no registered theme for.
+export function applyThemeAndFonts(rendition: Rendition, settings: ReaderSettings, theme: ThemeName): void {
+  rendition.themes.select(theme);
   rendition.themes.fontSize(`${settings.fontSize}%`);
   rendition.themes.font(FONT_STACKS[settings.fontFamily]);
   rendition.themes.override('line-height', `${settings.lineSpacing}`, true);

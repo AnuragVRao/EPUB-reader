@@ -1,9 +1,11 @@
 export type ThemeName = 'light' | 'dark' | 'sepia';
+/** What the user picked: a fixed theme, or 'auto' to follow the OS light/dark preference. */
+export type ThemeSetting = ThemeName | 'auto';
 export type FontFamily = 'system' | 'serif' | 'sans' | 'dyslexic';
 export type FlowMode = 'paginated' | 'scrolled';
 
 export interface ReaderSettings {
-  theme: ThemeName;
+  theme: ThemeSetting;
   fontSize: number; // percentage, e.g. 100
   fontFamily: FontFamily;
   flow: FlowMode;

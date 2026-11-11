@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, loadSettings, persistSettings } from './settings';
+import { DEFAULT_SETTINGS, loadSettings, persistSettings, resolveTheme } from './settings';
 
 const SETTINGS_KEY = 'epub-reader-settings';
 
@@ -34,6 +34,12 @@ describe('loadSettings', () => {
     expect(loadSettings()).toEqual({ ...DEFAULT_SETTINGS, theme: 'dark', fontSize: 130 });
   });
 
+  it('follows the OS theme by default and keeps a stored "auto"', () => {
+    expect(DEFAULT_SETTINGS.theme).toBe('auto');
+    items.set(SETTINGS_KEY, JSON.stringify({ theme: 'auto' }));
+    expect(loadSettings().theme).toBe('auto');
+  });
+
   it('falls back to the defaults on corrupt JSON', () => {
     items.set(SETTINGS_KEY, '{not json');
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
@@ -59,6 +65,19 @@ describe('loadSettings', () => {
       },
     });
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe('resolveTheme', () => {
+  it('follows the OS preference when set to auto', () => {
+    expect(resolveTheme('auto', true)).toBe('dark');
+    expect(resolveTheme('auto', false)).toBe('light');
+  });
+
+  it('keeps an explicit choice whatever the OS prefers', () => {
+    expect(resolveTheme('light', true)).toBe('light');
+    expect(resolveTheme('sepia', true)).toBe('sepia');
+    expect(resolveTheme('dark', false)).toBe('dark');
   });
 });
 
