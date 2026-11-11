@@ -185,7 +185,13 @@ function flattenToc(items: NavItem[], out: NavItem[] = []): NavItem[] {
 // the file alone isn't enough: the entry is the last one whose anchor sits at
 // or before the top of the page. Returns undefined when the TOC has nothing
 // for this file or the lookup fails, and callers fall back to file matching.
-function findActiveTocItem(book: Book, rendition: Rendition, location: Location): NavItem | undefined {
+function findActiveTocItem(
+  book: Book,
+  rendition: Rendition,
+  location: Location,
+  /** The reader's position: the anchored CFI, which stays put across relayouts, rather than the page start. */
+  position: string,
+): NavItem | undefined {
   try {
     const file = location.start.href.split('#')[0];
     const flat = flattenToc(book.navigation.toc);
@@ -208,7 +214,7 @@ function findActiveTocItem(book: Book, rendition: Rendition, location: Location)
       }
       const el =
         contents.document.getElementById(anchor) ?? contents.document.getElementById(decodeURIComponent(anchor));
-      if (el && cfi.compare(contents.cfiFromNode(el), location.start.cfi) <= 0) active = item;
+      if (el && cfi.compare(contents.cfiFromNode(el), position) <= 0) active = item;
     }
     if (active) return active;
 
@@ -324,10 +330,14 @@ export function useEpubReader(
       width: '100%',
       height: '100%',
       flow: settingsRef.current.flow === 'scrolled' ? 'scrolled-doc' : 'paginated',
-      spread: 'auto',
+      spread: settingsRef.current.spread === 'single' ? 'none' : 'auto',
     });
     renditionRef.current = rendition;
-    registerThemes(rendition);
+    registerThemes(
+      rendition,
+      () => settingsRef.current,
+      () => book.packaging?.metadata?.language ?? '',
+    );
     applyThemeAndFonts(rendition, settingsRef.current, themeRef.current);
 
     // Drag events over the book stay inside its iframe. Tell the app when a
@@ -352,14 +362,15 @@ export function useEpubReader(
       if (!relayoutActiveRef.current && !resizePendingRef.current) anchorCfiRef.current = cfi;
       setCurrentCfi(cfi);
       setCurrentHref(location.start.href);
-      const tocItem = findActiveTocItem(book, rendition, location);
-      setCurrentTocHref(tocItem?.href ?? '');
-      setCurrentChapterLabel(tocItem?.label.trim() || findChapterLabel(book, location.start.href));
       // Report and persist the anchored position rather than this page's
       // start: the anchor is on screen either way, but it doesn't shift with
-      // panel width or font size, so the % stays stable and a reload under a
-      // different layout reopens at the same text.
+      // panel width or font size, so the %, the chapter label and the TOC
+      // highlight stay stable and a reload under a different layout reopens
+      // at the same text.
       const position = anchorCfiRef.current || cfi;
+      const tocItem = findActiveTocItem(book, rendition, location, position);
+      setCurrentTocHref(tocItem?.href ?? '');
+      setCurrentChapterLabel(tocItem?.label.trim() || findChapterLabel(book, location.start.href));
       const pct = book.locations.length() ? book.locations.percentageFromCfi(position) : null;
       setPercentage(pct);
       const bid = bookIdRef.current;
@@ -510,7 +521,15 @@ export function useEpubReader(
       const anchor = anchorCfiRef.current;
       if (anchor && bookIdRef.current) await displayAndSettle(rendition, anchor);
     });
-  }, [theme, settings.fontSize, settings.fontFamily, settings.lineSpacing, settings.justify]);
+  }, [
+    theme,
+    settings.fontSize,
+    settings.fontFamily,
+    settings.lineSpacing,
+    settings.justify,
+    settings.paragraphSpacing,
+    settings.hyphenate,
+  ]);
 
   useEffect(() => {
     const rendition = renditionRef.current;
@@ -530,6 +549,22 @@ export function useEpubReader(
       }
     });
   }, [settings.flow]);
+
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+    clearTimeout(resizeTimeoutRef.current);
+    enqueueRelayout(relayoutChainRef, relayoutActiveRef, rendition, async () => {
+      rendition.spread(settings.spread === 'single' ? 'none' : 'auto');
+      // As with a flow change, views on screen keep the old column layout
+      // until they are recreated.
+      const cfi = anchorCfiRef.current || currentCfiRef.current;
+      if (bookIdRef.current && cfi) {
+        rendition.clear();
+        await displayAndSettle(rendition, cfi);
+      }
+    });
+  }, [settings.spread]);
 
   const turn = useCallback((action: PageKeyAction) => {
     const book = bookRef.current;

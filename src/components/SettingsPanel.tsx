@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SavedBook } from '../hooks/useEpubReader';
-import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode } from '../lib/types';
+import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode, SpreadMode } from '../lib/types';
+import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from '../lib/typography';
 
 interface SettingsPanelProps {
   settings: ReaderSettings;
@@ -22,6 +23,11 @@ const FONTS: { value: FontFamily; label: string }[] = [
   { value: 'serif', label: 'Serif' },
   { value: 'sans', label: 'Sans-serif' },
   { value: 'dyslexic', label: 'Dyslexia-friendly' },
+];
+
+const SPREADS: { value: SpreadMode; label: string }[] = [
+  { value: 'auto', label: 'Two pages when wide' },
+  { value: 'single', label: 'Always one page' },
 ];
 
 const FLOWS: { value: FlowMode; label: string }[] = [
@@ -107,13 +113,50 @@ export default function SettingsPanel({
       </section>
 
       <section className="settings-section">
-        <h3>Text alignment</h3>
+        <h3>Paragraph spacing</h3>
+        <div className="segmented segmented--wrap">
+          {PARAGRAPH_SPACINGS.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              className={`segmented__btn ${settings.paragraphSpacing === s.value ? 'segmented__btn--active' : ''}`}
+              onClick={() => onChange({ paragraphSpacing: s.value })}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Page margins</h3>
+        <input
+          type="range"
+          min={0}
+          max={MAX_PAGE_MARGIN}
+          step={1}
+          value={settings.pageMargin}
+          aria-label="Page margins"
+          onChange={(e) => onChange({ pageMargin: Number(e.target.value) })}
+        />
+      </section>
+
+      <section className="settings-section">
+        <h3>Text</h3>
         <label className="switch-row">
           <span>Justify text</span>
           <input
             type="checkbox"
             checked={settings.justify}
             onChange={(e) => onChange({ justify: e.target.checked })}
+          />
+        </label>
+        <label className="switch-row">
+          <span>Hyphenate words</span>
+          <input
+            type="checkbox"
+            checked={settings.hyphenate}
+            onChange={(e) => onChange({ hyphenate: e.target.checked })}
           />
         </label>
       </section>
@@ -133,6 +176,24 @@ export default function SettingsPanel({
           ))}
         </div>
       </section>
+
+      {settings.flow === 'paginated' && (
+        <section className="settings-section">
+          <h3>Page layout</h3>
+          <div className="segmented segmented--wrap">
+            {SPREADS.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                className={`segmented__btn ${settings.spread === s.value ? 'segmented__btn--active' : ''}`}
+                onClick={() => onChange({ spread: s.value })}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="settings-section">
         <h3>Saved data</h3>

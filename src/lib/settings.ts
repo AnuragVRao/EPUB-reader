@@ -1,4 +1,5 @@
-import type { FlowMode, FontFamily, ReaderSettings, ThemeName, ThemeSetting } from './types';
+import type { FlowMode, FontFamily, ReaderSettings, SpreadMode, ThemeName, ThemeSetting } from './types';
+import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from './typography';
 
 const SETTINGS_KEY = 'epub-reader-settings';
 
@@ -9,6 +10,10 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   flow: 'paginated',
   lineSpacing: 1.4,
   justify: false,
+  paragraphSpacing: null,
+  hyphenate: false,
+  pageMargin: 0,
+  spread: 'auto',
   tocOpen: true,
   tocWidth: 300,
 };
@@ -16,6 +21,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
 const THEMES: readonly ThemeSetting[] = ['auto', 'light', 'dark', 'sepia'];
 const FONTS: readonly FontFamily[] = ['system', 'serif', 'sans', 'dyslexic'];
 const FLOWS: readonly FlowMode[] = ['paginated', 'scrolled'];
+const SPREADS: readonly SpreadMode[] = ['auto', 'single'];
+const SPACINGS = PARAGRAPH_SPACINGS.map((s) => s.value);
 
 function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
@@ -44,6 +51,10 @@ function sanitize(raw: unknown): ReaderSettings {
     flow: oneOf(s.flow, FLOWS, d.flow),
     lineSpacing: numberIn(s.lineSpacing, 1, 2.2, d.lineSpacing),
     justify: bool(s.justify, d.justify),
+    paragraphSpacing: oneOf(s.paragraphSpacing, SPACINGS, d.paragraphSpacing),
+    hyphenate: bool(s.hyphenate, d.hyphenate),
+    pageMargin: numberIn(s.pageMargin, 0, MAX_PAGE_MARGIN, d.pageMargin),
+    spread: oneOf(s.spread, SPREADS, d.spread),
     tocOpen: bool(s.tocOpen, d.tocOpen),
     tocWidth: numberIn(s.tocWidth, 200, 520, d.tocWidth),
   };

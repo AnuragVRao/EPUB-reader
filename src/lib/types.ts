@@ -3,6 +3,8 @@ export type ThemeName = 'light' | 'dark' | 'sepia';
 export type ThemeSetting = ThemeName | 'auto';
 export type FontFamily = 'system' | 'serif' | 'sans' | 'dyslexic';
 export type FlowMode = 'paginated' | 'scrolled';
+/** 'auto' shows two pages side by side when the window is wide enough; 'single' never does. */
+export type SpreadMode = 'auto' | 'single';
 
 export interface ReaderSettings {
   theme: ThemeSetting;
@@ -11,6 +13,12 @@ export interface ReaderSettings {
   flow: FlowMode;
   lineSpacing: number; // multiplier, e.g. 1.4
   justify: boolean;
+  /** Gap between paragraphs in em, or null to keep the book's own spacing. */
+  paragraphSpacing: number | null;
+  hyphenate: boolean;
+  /** Blank space on each side of the page, as a percentage of the reading area's width. */
+  pageMargin: number;
+  spread: SpreadMode;
   tocOpen: boolean;
   tocWidth: number;
 }

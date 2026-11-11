@@ -191,6 +191,14 @@
   min-width: 0;
 }
 
+/* Holds the page margins (as padding) around the epub.js container, in the
+   book's page colour so the margins read as part of the page. */
+.reader__page {
+  height: 100%;
+  width: 100%;
+  background: var(--page-bg);
+}
+
 .reader__container {
   height: 100%;
   width: 100%;
@@ -646,6 +654,10 @@
   min-width: 4ch;
   text-align: center;
   font-size: 0.9rem;
+}
+
+.switch-row + .switch-row {
+  margin-top: 10px;
 }
 
 .switch-row {

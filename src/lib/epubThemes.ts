@@ -1,5 +1,6 @@
 import type { Rendition } from 'epubjs';
 import type { ReaderSettings, ThemeName } from './types';
+import { typographyCss } from './typography';
 import dyslexic400 from '@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2?url';
 import dyslexic400Italic from '@fontsource/opendyslexic/files/opendyslexic-latin-400-italic.woff2?url';
 import dyslexic700 from '@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2?url';
@@ -47,15 +48,41 @@ function scrollbarRules(thumb: string) {
   };
 }
 
-export function registerThemes(rendition: Rendition): void {
+const TYPOGRAPHY_STYLE_ID = 'reader-typography';
+
+// Creates or updates the chapter document's typography stylesheet.
+function setTypographyCss(doc: Document | undefined, css: string): void {
+  if (!doc?.head) return;
+  let style = doc.getElementById(TYPOGRAPHY_STYLE_ID);
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = TYPOGRAPHY_STYLE_ID;
+    doc.head.appendChild(style);
+  }
+  if (style.textContent !== css) style.textContent = css;
+}
+
+/**
+ * `getSettings` is read each time a chapter document is created, so chapters
+ * loaded later pick up the settings in force at that moment. `language` is the
+ * book's declared language, used for documents that don't declare their own -
+ * browsers only hyphenate text whose language they know.
+ */
+export function registerThemes(rendition: Rendition, getSettings: () => ReaderSettings, language?: () => string): void {
   const fontCss = dyslexicFontFaceCss();
   rendition.hooks.content.register((contents: { document: Document }) => {
     const doc = contents.document;
-    if (!doc?.head || doc.getElementById('reader-fonts')) return;
-    const style = doc.createElement('style');
-    style.id = 'reader-fonts';
-    style.textContent = fontCss;
-    doc.head.appendChild(style);
+    if (!doc?.head) return;
+    if (!doc.getElementById('reader-fonts')) {
+      const style = doc.createElement('style');
+      style.id = 'reader-fonts';
+      style.textContent = fontCss;
+      doc.head.appendChild(style);
+    }
+    const root = doc.documentElement;
+    const lang = language?.();
+    if (lang && !root.getAttribute('lang') && !root.getAttribute('xml:lang')) root.setAttribute('lang', lang);
+    setTypographyCss(doc, typographyCss(getSettings()));
   });
 
   rendition.themes.register('light', {
@@ -84,4 +111,9 @@ export function applyThemeAndFonts(rendition: Rendition, settings: ReaderSetting
   rendition.themes.font(FONT_STACKS[settings.fontFamily]);
   rendition.themes.override('line-height', `${settings.lineSpacing}`, true);
   rendition.themes.override('text-align', settings.justify ? 'justify' : 'start', true);
+
+  // Chapters already on screen; ones created later get it from the content hook.
+  const css = typographyCss(settings);
+  const contents = rendition.getContents() as unknown as Array<{ document?: Document }> | undefined;
+  for (const content of contents ?? []) setTypographyCss(content.document, css);
 }

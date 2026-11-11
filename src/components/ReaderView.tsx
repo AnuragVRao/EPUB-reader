@@ -135,7 +135,11 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
               </svg>
             </button>
           </div>
-          <div className="reader__container" ref={reader.containerRef} />
+          {/* epub.js measures the container's border box, so the margin has to
+              come from a wrapper's padding rather than the container's own. */}
+          <div className="reader__page" style={{ padding: `0 ${settings.pageMargin}%` }}>
+            <div className="reader__container" ref={reader.containerRef} />
+          </div>
           <div className="reader__nav-zone reader__nav-zone--next">
             <button
               type="button"

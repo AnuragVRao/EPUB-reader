@@ -53,6 +53,24 @@ describe('loadSettings', () => {
     expect(loadSettings()).toEqual({ ...DEFAULT_SETTINGS, lineSpacing: 2.2, tocWidth: 200, flow: 'scrolled' });
   });
 
+  it('validates the typography and layout settings', () => {
+    items.set(
+      SETTINGS_KEY,
+      JSON.stringify({ paragraphSpacing: 0.5, hyphenate: true, pageMargin: 99, spread: 'single' }),
+    );
+    expect(loadSettings()).toEqual({
+      ...DEFAULT_SETTINGS,
+      paragraphSpacing: 0.5,
+      hyphenate: true,
+      pageMargin: 25,
+      spread: 'single',
+    });
+
+    // 0.7 is not one of the offered spacings; "double" is not a spread mode.
+    items.set(SETTINGS_KEY, JSON.stringify({ paragraphSpacing: 0.7, hyphenate: 1, pageMargin: -4, spread: 'double' }));
+    expect(loadSettings()).toEqual({ ...DEFAULT_SETTINGS, pageMargin: 0 });
+  });
+
   it('falls back to the defaults when the stored value is not an object', () => {
     items.set(SETTINGS_KEY, 'null');
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
