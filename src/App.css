@@ -756,3 +756,24 @@ input[type='range'] {
   font-size: 0.85rem;
   flex-shrink: 0;
 }
+
+/* Reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  /* A spinner that doesn't spin: fade it instead so it still reads as busy. */
+  .spinner {
+    animation: spinner-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes spinner-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
