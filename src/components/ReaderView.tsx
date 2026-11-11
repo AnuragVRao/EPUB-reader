@@ -192,6 +192,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 bookmarks={reader.bookmarks}
                 onSelect={handleSelectCfi}
                 onRemove={reader.removeBookmark}
+                onUpdate={reader.updateBookmark}
               />
             )}
             {activePanel === 'search' && <SearchPanel onSearch={reader.search} onSelect={handleSelectCfi} />}

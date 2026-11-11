@@ -507,6 +507,48 @@
   color: var(--text-muted);
 }
 
+.bookmark-item__note {
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin: 2px 0;
+}
+
+.bookmark-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+
+.bookmark-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.bookmark-editor textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+
+.bookmark-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bookmark-editor__actions .btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
 /* Search */
 
 .search-panel__form {

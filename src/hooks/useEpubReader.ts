@@ -218,6 +218,8 @@ function findActiveTocItem(book: Book, rendition: Rendition, location: Location)
   }
 }
 
+export type BookmarkPatch = Partial<Pick<Bookmark, 'label' | 'note'>>;
+
 export interface EpubReaderApi {
   containerRef: React.RefObject<HTMLDivElement | null>;
   loading: boolean;
@@ -241,6 +243,8 @@ export interface EpubReaderApi {
   goToCfi: (cfi: string) => void;
   toggleBookmark: () => void;
   removeBookmark: (id: string) => void;
+  /** Renames a bookmark and/or sets its note. An empty note removes it. */
+  updateBookmark: (id: string, patch: BookmarkPatch) => void;
   search: (query: string, options?: SearchOptions) => Promise<SearchResult[]>;
   /** Deletes bookmarks/progress/locations for every book except this one. Returns how many books were cleared. */
   clearOtherBooks: () => Promise<number>;
@@ -567,6 +571,27 @@ export function useEpubReader(
     });
   }, []);
 
+  const updateBookmark = useCallback((id: string, patch: BookmarkPatch) => {
+    const bookId = bookIdRef.current;
+    if (!bookId) return;
+    setBookmarks((prev) => {
+      const next = prev.map((b) => {
+        if (b.id !== id) return b;
+        const updated: Bookmark = { ...b };
+        // An emptied label would leave nothing to click on; keep the old one.
+        if (patch.label?.trim()) updated.label = patch.label.trim();
+        if (patch.note !== undefined) {
+          const note = patch.note.trim();
+          if (note) updated.note = note;
+          else delete updated.note;
+        }
+        return updated;
+      });
+      saveBookmarks(bookId, next);
+      return next;
+    });
+  }, []);
+
   const search = useCallback(async (query: string, options: SearchOptions = {}): Promise<SearchResult[]> => {
     const { signal, onProgress, onResults } = options;
     const book = bookRef.current;
@@ -643,6 +668,7 @@ export function useEpubReader(
     goToCfi,
     toggleBookmark,
     removeBookmark,
+    updateBookmark,
     search,
     clearOtherBooks,
   };

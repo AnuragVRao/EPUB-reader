@@ -26,6 +26,8 @@ export interface Bookmark {
   cfi: string;
   label: string;
   excerpt: string;
+  /** Free-text note added by the reader. Absent on bookmarks without one. */
+  note?: string;
   createdAt: number;
 }
 
