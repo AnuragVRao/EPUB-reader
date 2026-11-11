@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from 'react';
 import type { ReaderSettings, ThemeName, FontFamily, FlowMode } from '../lib/types';
 
 interface SettingsPanelProps {
   settings: ReaderSettings;
   onChange: (patch: Partial<ReaderSettings>) => void;
+  onClearOtherBooks: () => Promise<number>;
 }
 
 const THEMES: { value: ThemeName; label: string }[] = [
@@ -23,7 +25,7 @@ const FLOWS: { value: FlowMode; label: string }[] = [
   { value: 'scrolled', label: 'Scrolled' },
 ];
 
-export default function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, onChange, onClearOtherBooks }: SettingsPanelProps) {
   return (
     <div className="settings-panel">
       <section className="settings-section">
@@ -120,6 +122,64 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
           ))}
         </div>
       </section>
+
+      <section className="settings-section">
+        <h3>Saved data</h3>
+        <ClearOtherBooksButton onClear={onClearOtherBooks} />
+      </section>
+    </div>
+  );
+}
+
+
+type ClearState = 'idle' | 'confirm' | 'clearing' | { cleared: number } | 'error';
+
+// Two-step button: the first click arms it, the second actually deletes.
+function ClearOtherBooksButton({ onClear }: { onClear: () => Promise<number> }) {
+  const [state, setState] = useState<ClearState>('idle');
+  const resetRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(resetRef.current), []);
+
+  const handleClick = async () => {
+    clearTimeout(resetRef.current);
+    if (state !== 'confirm') {
+      setState('confirm');
+      // Disarm if the user doesn't follow through.
+      resetRef.current = setTimeout(() => setState('idle'), 4000);
+      return;
+    }
+    setState('clearing');
+    try {
+      setState({ cleared: await onClear() });
+    } catch {
+      setState('error');
+    }
+  };
+
+  let message = 'Removes bookmarks and reading positions for every book except this one.';
+  if (typeof state === 'object') {
+    message =
+      state.cleared === 0
+        ? 'There was no data from other books.'
+        : `Cleared data for ${state.cleared} ${state.cleared === 1 ? 'book' : 'books'}.`;
+  } else if (state === 'error') {
+    message = 'Could not clear saved data.';
+  }
+
+  return (
+    <div className="clear-data">
+      <button
+        type="button"
+        className={`btn ${state === 'confirm' ? 'btn--danger' : ''}`}
+        onClick={handleClick}
+        disabled={state === 'clearing'}
+      >
+        {state === 'confirm' ? 'Click again to confirm' : 'Clear data for other books'}
+      </button>
+      <p className="clear-data__hint" aria-live="polite">
+        {message}
+      </p>
     </div>
   );
 }

@@ -17,6 +17,7 @@ export default function BookmarksPanel({ bookmarks, onSelect, onRemove }: Bookma
         <li key={bookmark.id} className="bookmark-item">
           <button type="button" className="bookmark-item__main" onClick={() => onSelect(bookmark.cfi)}>
             <span className="bookmark-item__label">{bookmark.label}</span>
+            {bookmark.excerpt && <span className="bookmark-item__excerpt">{bookmark.excerpt}</span>}
             <span className="bookmark-item__date">{new Date(bookmark.createdAt).toLocaleString()}</span>
           </button>
           <button

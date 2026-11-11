@@ -26,6 +26,8 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const [activePanel, setActivePanel] = useState<PanelName | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const percentLabel = reader.percentage === null ? '' : `${Math.round(reader.percentage * 100)}%`;
+
   const togglePanel = useCallback((panel: PanelName) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
   }, []);
@@ -99,6 +101,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         onToggleBookmark={reader.toggleBookmark}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        progressLabel={percentLabel}
         onClose={onClose}
       />
 
@@ -153,6 +156,19 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             </button>
           </div>
 
+          {reader.percentage !== null && (
+            <div
+              className="reader__progress"
+              role="progressbar"
+              aria-label="Reading progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(reader.percentage * 100)}
+            >
+              <div className="reader__progress-fill" style={{ width: `${reader.percentage * 100}%` }} />
+            </div>
+          )}
+
           {reader.loading && (
             <div className="reader__overlay">
               <div className="spinner" aria-label="Loading book" />
@@ -180,7 +196,13 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
               />
             )}
             {activePanel === 'search' && <SearchPanel onSearch={reader.search} onSelect={handleSelectCfi} />}
-            {activePanel === 'settings' && <SettingsPanel settings={settings} onChange={updateSettings} />}
+            {activePanel === 'settings' && (
+              <SettingsPanel
+                settings={settings}
+                onChange={updateSettings}
+                onClearOtherBooks={reader.clearOtherBooks}
+              />
+            )}
           </SidePanel>
         )}
       </div>

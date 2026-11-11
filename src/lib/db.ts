@@ -82,6 +82,31 @@ export async function saveProgress(progress: Progress): Promise<void> {
   await db.put('progress', progress, progress.bookId);
 }
 
+// Removes bookmarks, progress and cached locations for every book except
+// `keepBookId`. Returns the number of distinct books whose data was removed.
+export async function clearOtherBooksData(keepBookId: string): Promise<number> {
+  const db = await getDB();
+  const stores = ['bookmarks', 'progress', 'locations'] as const;
+  const tx = db.transaction(stores, 'readwrite');
+  const removed = new Set<string>();
+  await Promise.all(
+    stores.map(async (name) => {
+      const store = tx.objectStore(name);
+      const keys = await store.getAllKeys();
+      await Promise.all(
+        keys
+          .filter((key) => key !== keepBookId)
+          .map((key) => {
+            removed.add(key);
+            return store.delete(key);
+          }),
+      );
+    }),
+  );
+  await tx.done;
+  return removed.size;
+}
+
 export async function getLocations(bookId: string): Promise<string | undefined> {
   const db = await getDB();
   const record = await db.get('locations', bookId);

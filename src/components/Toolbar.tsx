@@ -11,6 +11,8 @@ interface ToolbarProps {
   onToggleBookmark: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  /** e.g. "42%"; empty while the location index is still being built. */
+  progressLabel: string;
   onClose: () => void;
 }
 
@@ -25,6 +27,7 @@ export default function Toolbar({
   onToggleBookmark,
   isFullscreen,
   onToggleFullscreen,
+  progressLabel,
   onClose,
 }: ToolbarProps) {
   return (
@@ -74,7 +77,13 @@ export default function Toolbar({
         {chapterLabel && <span className="toolbar__chapter">{chapterLabel}</span>}
       </div>
 
-      <div className="toolbar__spacer" />
+      <div className="toolbar__spacer">
+        {progressLabel && (
+          <span className="toolbar__progress" title="Reading progress">
+            {progressLabel}
+          </span>
+        )}
+      </div>
     </header>
   );
 }
