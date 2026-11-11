@@ -197,9 +197,15 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
         if (storedLocations) {
           book.locations.load(storedLocations);
         } else {
-          book.locations.generate(1600).then(() => {
-            if (!cancelled) saveLocations(bookId, book.locations.save());
-          });
+          book.locations
+            .generate(1600)
+            .then(() => {
+              if (!cancelled) saveLocations(bookId, book.locations.save());
+            })
+            .catch((err: unknown) => {
+              // Percentages just stay unavailable; reading is unaffected.
+              if (!cancelled) console.warn('Failed to generate EPUB locations', err);
+            });
         }
 
         await rendition.display(storedProgress?.cfi || undefined);

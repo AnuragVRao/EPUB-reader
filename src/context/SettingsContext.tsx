@@ -13,8 +13,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ReaderSettings>(() => loadSettings() ?? DEFAULT_SETTINGS);
 
   useEffect(() => {
-    persistSettings(settings);
     document.documentElement.setAttribute('data-theme', settings.theme);
+    // Debounced: dragging the TOC edge updates settings on every pointermove.
+    const timeout = setTimeout(() => persistSettings(settings), 250);
+    return () => clearTimeout(timeout);
   }, [settings]);
 
   const value = useMemo<SettingsContextValue>(

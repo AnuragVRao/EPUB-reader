@@ -32,9 +32,16 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
 
   useEffect(() => {
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActivePanel(null);
+        return;
+      }
+      // Don't turn pages while the user is moving the cursor in a text field
+      // or adjusting a slider.
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || target.closest('input, textarea, select'))) return;
       if (event.key === 'ArrowLeft') reader.prev();
       if (event.key === 'ArrowRight') reader.next();
-      if (event.key === 'Escape') setActivePanel(null);
     };
     window.addEventListener('keyup', onKeyUp);
     return () => window.removeEventListener('keyup', onKeyUp);

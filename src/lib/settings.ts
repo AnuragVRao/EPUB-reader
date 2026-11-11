@@ -24,5 +24,10 @@ export function loadSettings(): ReaderSettings {
 }
 
 export function persistSettings(settings: ReaderSettings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage unavailable (private mode, quota, disabled) - settings still
+    // apply for this session, they just won't survive a reload.
+  }
 }
