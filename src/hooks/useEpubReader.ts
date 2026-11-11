@@ -11,6 +11,7 @@ import {
   saveLocations,
   saveProgress,
 } from '../lib/db';
+import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
 import type { Bookmark, ReaderSettings, SearchResult, TocItem } from '../lib/types';
 
@@ -254,6 +255,22 @@ export function useEpubReader(data: ArrayBuffer | null, settings: ReaderSettings
     renditionRef.current = rendition;
     registerThemes(rendition);
     applyThemeAndFonts(rendition, settingsRef.current);
+
+    // Drag events over the book stay inside its iframe. Tell the app when a
+    // file is dragged in so it can raise its drop overlay, and stop the
+    // browser's default of navigating to a file dropped on the page.
+    rendition.hooks.content.register((contents: { document: Document }) => {
+      const doc = contents.document;
+      if (!doc) return;
+      doc.addEventListener('dragenter', (event) => {
+        if (isFileDrag(event)) window.dispatchEvent(new Event(FILE_DRAG_EVENT));
+      });
+      const blockFileDrop = (event: DragEvent) => {
+        if (isFileDrag(event)) event.preventDefault();
+      };
+      doc.addEventListener('dragover', blockFileDrop);
+      doc.addEventListener('drop', blockFileDrop);
+    });
 
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;

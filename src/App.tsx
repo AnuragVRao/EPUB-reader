@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { SettingsProvider } from './context/SettingsContext';
 import DropZone from './components/DropZone';
+import BookDropOverlay from './components/BookDropOverlay';
 
 // The reader pulls in epub.js and JSZip, the bulk of the bundle; load it only
 // once there's a book to show so the drop zone appears quickly.
@@ -11,6 +12,9 @@ import './App.css';
 function App() {
   const [bookData, setBookData] = useState<ArrayBuffer | null>(null);
   const [filename, setFilename] = useState('');
+  // Bumped for every opened file so the reader remounts with clean state
+  // (panels, search results) when one book is dropped over another.
+  const [bookVersion, setBookVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [checkingStorage, setCheckingStorage] = useState(true);
 
@@ -58,11 +62,13 @@ function App() {
     }
     setFilename(file.name);
     setBookData(data);
+    setBookVersion((v) => v + 1);
   }, []);
 
   const handleClose = useCallback(() => {
     setBookData(null);
     setFilename('');
+    setError(null);
     clearCurrentBook().catch((err: unknown) => console.warn('Could not clear the stored book', err));
   }, []);
 
@@ -77,7 +83,16 @@ function App() {
               </div>
             }
           >
-            <ReaderView data={bookData} fallbackTitle={filename} onClose={handleClose} />
+            <ReaderView key={bookVersion} data={bookData} fallbackTitle={filename} onClose={handleClose} />
+            <BookDropOverlay onFile={handleFile} />
+            {error && (
+              <div className="app-banner" role="alert">
+                <span>{error}</span>
+                <button type="button" className="btn" onClick={() => setError(null)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
           </Suspense>
         ) : (
           <DropZone onFile={handleFile} error={error} />
