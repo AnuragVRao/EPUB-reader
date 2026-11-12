@@ -1,4 +1,7 @@
-export type ThemeName = 'light' | 'dark' | 'sepia';
+import type { CustomColors } from './customTheme';
+
+/** 'custom' is drawn from the reader's own colours (`ReaderSettings.customColors`). */
+export type ThemeName = 'light' | 'dark' | 'sepia' | 'custom';
 /** What the user picked: a fixed theme, or 'auto' to follow the OS light/dark preference. */
 export type ThemeSetting = ThemeName | 'auto';
 export type FontFamily = 'system' | 'serif' | 'sans' | 'dyslexic';
@@ -19,6 +22,8 @@ export interface ReaderSettings {
   /** Blank space on each side of the page, as a percentage of the reading area's width. */
   pageMargin: number;
   spread: SpreadMode;
+  /** Colours for the 'custom' theme; kept when another theme is chosen. */
+  customColors: CustomColors;
   tocOpen: boolean;
   tocWidth: number;
 }

@@ -1,6 +1,7 @@
 import type { Rendition } from 'epubjs';
 import type { ReaderSettings, ThemeName } from './types';
 import { typographyCss } from './typography';
+import { customPalette, type CustomColors } from './customTheme';
 import dyslexic400 from '@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2?url';
 import dyslexic400Italic from '@fontsource/opendyslexic/files/opendyslexic-latin-400-italic.woff2?url';
 import dyslexic700 from '@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2?url';
@@ -103,9 +104,28 @@ export function registerThemes(rendition: Rendition, getSettings: () => ReaderSe
   });
 }
 
+/**
+ * (Re)defines the 'custom' theme from the reader's colours. epub.js appends a
+ * re-registered theme's rules to its existing stylesheet rather than replacing
+ * them, so the old sheet is removed from each chapter document first -
+ * otherwise every colour change would pile up another copy.
+ */
+export function registerCustomTheme(rendition: Rendition, colors: CustomColors): void {
+  const contents = rendition.getContents() as unknown as Array<{ document?: Document }> | undefined;
+  for (const content of contents ?? []) content.document?.getElementById('epubjs-inserted-css-custom')?.remove();
+  const p = customPalette(colors);
+  rendition.themes.register('custom', {
+    body: { background: p.page, color: p.text },
+    a: { color: `${p.link} !important` },
+    'a:link, a:link *': { color: `${p.link} !important` },
+    ...scrollbarRules(p.scrollbarThumb),
+  });
+}
+
 // `theme` is the resolved theme - `settings.theme` may be 'auto', which
 // epub.js has no registered theme for.
 export function applyThemeAndFonts(rendition: Rendition, settings: ReaderSettings, theme: ThemeName): void {
+  if (theme === 'custom') registerCustomTheme(rendition, settings.customColors);
   rendition.themes.select(theme);
   rendition.themes.fontSize(`${settings.fontSize}%`);
   rendition.themes.font(FONT_STACKS[settings.fontFamily]);

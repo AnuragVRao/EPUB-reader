@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ReaderSettings, ThemeName } from '../lib/types';
 import { DEFAULT_SETTINGS, loadSettings, persistSettings, resolveTheme } from '../lib/settings';
+import { customPalette } from '../lib/customTheme';
 
 interface SettingsContextValue {
   settings: ReaderSettings;
@@ -29,6 +30,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // The custom theme's app-shell colours are set inline on <html>, where they
+  // override the stylesheet's per-theme custom properties. Other themes
+  // remove them again.
+  const { background, text, accent } = settings.customColors;
+  useEffect(() => {
+    if (theme !== 'custom') return;
+    const root = document.documentElement;
+    const palette = customPalette({ background, text, accent });
+    for (const [name, value] of Object.entries(palette.vars)) root.style.setProperty(`--${name}`, value);
+    root.style.colorScheme = palette.colorScheme;
+    return () => {
+      for (const name of Object.keys(palette.vars)) root.style.removeProperty(`--${name}`);
+      root.style.removeProperty('color-scheme');
+    };
+  }, [theme, background, text, accent]);
 
   // Debounced: dragging the TOC edge updates settings on every pointermove.
   // A save still pending when the page goes away (reload, tab closed) is

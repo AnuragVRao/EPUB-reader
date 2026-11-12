@@ -1472,3 +1472,55 @@ body {
     gap: 8px;
   }
 }
+
+/* Custom theme editor */
+
+.custom-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.custom-theme__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.custom-theme__field input[type='color'] {
+  width: 40px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.custom-theme__field span {
+  flex: 1;
+}
+
+.custom-theme__field code {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.custom-theme__contrast {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.custom-theme__contrast--low {
+  color: var(--danger);
+}
+
+.custom-theme__reset {
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}

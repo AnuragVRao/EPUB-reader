@@ -1,5 +1,6 @@
 import type { FlowMode, FontFamily, ReaderSettings, SpreadMode, ThemeName, ThemeSetting } from './types';
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from './typography';
+import { DEFAULT_CUSTOM_COLORS, sanitizeCustomColors } from './customTheme';
 
 const SETTINGS_KEY = 'epub-reader-settings';
 
@@ -14,11 +15,12 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   hyphenate: false,
   pageMargin: 0,
   spread: 'auto',
+  customColors: DEFAULT_CUSTOM_COLORS,
   tocOpen: true,
   tocWidth: 300,
 };
 
-const THEMES: readonly ThemeSetting[] = ['auto', 'light', 'dark', 'sepia'];
+const THEMES: readonly ThemeSetting[] = ['auto', 'light', 'dark', 'sepia', 'custom'];
 const FONTS: readonly FontFamily[] = ['system', 'serif', 'sans', 'dyslexic'];
 const FLOWS: readonly FlowMode[] = ['paginated', 'scrolled'];
 const SPREADS: readonly SpreadMode[] = ['auto', 'single'];
@@ -55,6 +57,7 @@ function sanitize(raw: unknown): ReaderSettings {
     hyphenate: bool(s.hyphenate, d.hyphenate),
     pageMargin: numberIn(s.pageMargin, 0, MAX_PAGE_MARGIN, d.pageMargin),
     spread: oneOf(s.spread, SPREADS, d.spread),
+    customColors: sanitizeCustomColors(s.customColors),
     tocOpen: bool(s.tocOpen, d.tocOpen),
     tocWidth: numberIn(s.tocWidth, 200, 520, d.tocWidth),
   };

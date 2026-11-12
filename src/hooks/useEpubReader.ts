@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ePub, { EpubCFI } from 'epubjs';
 import type { Book, Contents, Rendition, Location, NavItem } from 'epubjs';
-import { applyThemeAndFonts, registerThemes } from '../lib/epubThemes';
+import { applyThemeAndFonts, registerCustomTheme, registerThemes } from '../lib/epubThemes';
 import {
   clearOtherBooksData,
   deleteBookData,
@@ -997,6 +997,17 @@ export function useEpubReader(
     settings.paragraphSpacing,
     settings.hyphenate,
   ]);
+
+  // Changing the custom colours only recolours the page - no reflow, so no
+  // relayout. (Switching to or from the custom theme goes through the effect
+  // above like any other theme change.)
+  const { background, text, accent } = settings.customColors;
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition || themeRef.current !== 'custom') return;
+    registerCustomTheme(rendition, { background, text, accent });
+    rendition.themes.select('custom');
+  }, [background, text, accent]);
 
   useEffect(() => {
     const rendition = renditionRef.current;

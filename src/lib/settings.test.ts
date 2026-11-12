@@ -53,6 +53,20 @@ describe('loadSettings', () => {
     expect(loadSettings()).toEqual({ ...DEFAULT_SETTINGS, lineSpacing: 2.2, tocWidth: 200, flow: 'scrolled' });
   });
 
+  it('keeps a custom theme and its colours, repairing bad ones', () => {
+    items.set(
+      SETTINGS_KEY,
+      JSON.stringify({ theme: 'custom', customColors: { background: '#102030', text: 'white', accent: '#AABBCC' } }),
+    );
+    const loaded = loadSettings();
+    expect(loaded.theme).toBe('custom');
+    expect(loaded.customColors).toEqual({
+      background: '#102030',
+      text: DEFAULT_SETTINGS.customColors.text,
+      accent: '#aabbcc',
+    });
+  });
+
   it('validates the typography and layout settings', () => {
     items.set(
       SETTINGS_KEY,

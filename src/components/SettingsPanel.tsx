@@ -4,6 +4,7 @@ import type { BackupFile } from '../lib/backup';
 import type { ImportSummary } from '../lib/db';
 import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode, SpreadMode } from '../lib/types';
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from '../lib/typography';
+import { DEFAULT_CUSTOM_COLORS, MIN_CONTRAST, contrastRatio, type CustomColors } from '../lib/customTheme';
 
 interface SettingsPanelProps {
   settings: ReaderSettings;
@@ -20,6 +21,7 @@ const THEMES: { value: ThemeSetting; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
   { value: 'sepia', label: 'Sepia' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 const FONTS: { value: FontFamily; label: string }[] = [
@@ -65,6 +67,9 @@ export default function SettingsPanel({
             </button>
           ))}
         </div>
+        {settings.theme === 'custom' && (
+          <CustomThemeEditor colors={settings.customColors} onChange={(customColors) => onChange({ customColors })} />
+        )}
       </section>
 
       <section className="settings-section">
@@ -211,6 +216,50 @@ export default function SettingsPanel({
           onImport={onImportData}
         />
       </section>
+    </div>
+  );
+}
+
+const COLOR_FIELDS: Array<{ key: keyof CustomColors; label: string }> = [
+  { key: 'background', label: 'Page' },
+  { key: 'text', label: 'Text' },
+  { key: 'accent', label: 'Links and buttons' },
+];
+
+function CustomThemeEditor({
+  colors,
+  onChange,
+}: {
+  colors: CustomColors;
+  onChange: (colors: CustomColors) => void;
+}) {
+  const ratio = contrastRatio(colors.text, colors.background);
+  const readable = ratio >= MIN_CONTRAST;
+  const changed = COLOR_FIELDS.some(({ key }) => colors[key] !== DEFAULT_CUSTOM_COLORS[key]);
+
+  return (
+    <div className="custom-theme">
+      {COLOR_FIELDS.map(({ key, label }) => (
+        <label key={key} className="custom-theme__field">
+          <input
+            type="color"
+            aria-label={`${label} colour`}
+            value={colors[key]}
+            onChange={(e) => onChange({ ...colors, [key]: e.target.value })}
+          />
+          <span>{label}</span>
+          <code aria-hidden="true">{colors[key]}</code>
+        </label>
+      ))}
+      <p className={`custom-theme__contrast ${readable ? '' : 'custom-theme__contrast--low'}`} aria-live="polite">
+        Text contrast {ratio.toFixed(1)}:1
+        {readable ? ' - easy to read.' : ` - below the ${MIN_CONTRAST}:1 recommended for body text.`}
+      </p>
+      {changed && (
+        <button type="button" className="btn custom-theme__reset" onClick={() => onChange(DEFAULT_CUSTOM_COLORS)}>
+          Reset colours
+        </button>
+      )}
     </div>
   );
 }
