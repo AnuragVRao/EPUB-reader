@@ -1,6 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Bookmark, Progress, SavedBookInfo, StoredBook, StoredLocations } from './types';
-import type { CurrentBookPointer, LibraryBook, LibraryEntry, LibraryLimits } from './types';
+import type { CurrentBookPointer, Highlight, LibraryBook, LibraryEntry, LibraryLimits } from './types';
 
 const CURRENT_BOOK_KEY = 'singleton';
 
@@ -21,6 +21,11 @@ interface EpubReaderDB extends DBSchema {
   bookFiles: {
     key: string;
     value: ArrayBuffer;
+  };
+  // Added in v2, keyed by book.key() like bookmarks.
+  highlights: {
+    key: string;
+    value: { bookId: string; items: Highlight[] };
   };
   bookmarks: {
     key: string;
@@ -55,6 +60,9 @@ function getDB() {
         }
         if (!db.objectStoreNames.contains('bookFiles')) {
           db.createObjectStore('bookFiles');
+        }
+        if (!db.objectStoreNames.contains('highlights')) {
+          db.createObjectStore('highlights');
         }
         if (!db.objectStoreNames.contains('currentBook')) {
           db.createObjectStore('currentBook');
@@ -116,7 +124,7 @@ export async function saveProgress(progress: Progress): Promise<void> {
 // `keepBookId`. Returns the number of distinct books whose data was removed.
 export async function clearOtherBooksData(keepBookId: string): Promise<number> {
   const db = await getDB();
-  const stores = ['bookmarks', 'progress', 'locations'] as const;
+  const stores = ['bookmarks', 'progress', 'locations', 'highlights'] as const;
   const tx = db.transaction(stores, 'readwrite');
   const removed = new Set<string>();
   await Promise.all(
@@ -173,7 +181,7 @@ export async function listSavedBooks(): Promise<SavedBookInfo[]> {
 // Removes one book's bookmarks, progress and cached locations.
 export async function deleteBookData(bookId: string): Promise<void> {
   const db = await getDB();
-  const stores = ['bookmarks', 'progress', 'locations'] as const;
+  const stores = ['bookmarks', 'progress', 'locations', 'highlights'] as const;
   const tx = db.transaction(stores, 'readwrite');
   await Promise.all(stores.map((name) => tx.objectStore(name).delete(bookId)));
   await tx.done;
@@ -188,6 +196,17 @@ export async function getLocations(bookId: string): Promise<string | undefined> 
 export async function saveLocations(bookId: string, locations: string): Promise<void> {
   const db = await getDB();
   await db.put('locations', { bookId, locations }, bookId);
+}
+
+export async function getHighlights(bookId: string): Promise<Highlight[]> {
+  const db = await getDB();
+  const record = await db.get('highlights', bookId);
+  return record?.items ?? [];
+}
+
+export async function saveHighlights(bookId: string, items: Highlight[]): Promise<void> {
+  const db = await getDB();
+  await db.put('highlights', { bookId, items }, bookId);
 }
 
 // The shelf: previously opened books, stored whole.

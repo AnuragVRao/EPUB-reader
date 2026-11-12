@@ -8,6 +8,8 @@ import TocSidebar from './TocSidebar';
 import BookmarksPanel from './BookmarksPanel';
 import SearchPanel from './SearchPanel';
 import SettingsPanel from './SettingsPanel';
+import HighlightsPanel from './HighlightsPanel';
+import SelectionBar from './SelectionBar';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -16,7 +18,7 @@ interface ReaderViewProps {
 }
 
 const PANEL_TITLES: Record<PanelName, string> = {
-  bookmarks: 'Bookmarks',
+  bookmarks: 'Bookmarks and highlights',
   search: 'Search',
   settings: 'Display Settings',
 };
@@ -32,6 +34,11 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const togglePanel = useCallback((panel: PanelName) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
   }, []);
+
+  // Clicking a highlight on the page opens the list with that one picked out.
+  useEffect(() => {
+    if (reader.clickedHighlight) setActivePanel('bookmarks');
+  }, [reader.clickedHighlight]);
 
   useEffect(() => {
     const onKeyUp = (event: KeyboardEvent) => {
@@ -168,6 +175,12 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             </div>
           )}
 
+          <SelectionBar
+            selection={reader.selection}
+            onHighlight={reader.addHighlight}
+            onDismiss={reader.clearSelection}
+          />
+
           {reader.loading && (
             <div className="reader__overlay">
               <div className="spinner" aria-label="Loading book" />
@@ -193,6 +206,15 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onSelect={handleSelectCfi}
                 onRemove={reader.removeBookmark}
                 onUpdate={reader.updateBookmark}
+              />
+            )}
+            {activePanel === 'bookmarks' && (
+              <HighlightsPanel
+                highlights={reader.highlights}
+                focusId={reader.clickedHighlight?.id}
+                onSelect={handleSelectCfi}
+                onRemove={reader.removeHighlight}
+                onUpdateNote={reader.updateHighlightNote}
               />
             )}
             {activePanel === 'search' && <SearchPanel onSearch={reader.search} onSelect={handleSelectCfi} />}

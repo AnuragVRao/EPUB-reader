@@ -1063,3 +1063,118 @@ input[type='range'] {
   font-size: 0.8rem;
   box-shadow: 0 1px 4px var(--shadow);
 }
+
+/* Highlights */
+
+/* epub.js draws highlights in an SVG laid over each section's iframe. Like
+   .epub-container it lives in the app document, so the per-theme colours are
+   set here rather than in lib/epubThemes.ts. */
+:root {
+  --highlight: #ffd400;
+  --highlight-opacity: 0.4;
+  --highlight-blend: multiply;
+}
+
+:root[data-theme='dark'] {
+  /* Multiplying onto a dark page would be invisible: lay a tint over instead. */
+  --highlight: #ffd54a;
+  --highlight-opacity: 0.3;
+  --highlight-blend: normal;
+}
+
+:root[data-theme='sepia'] {
+  --highlight: #f0a800;
+  --highlight-opacity: 0.45;
+  --highlight-blend: multiply;
+}
+
+/* Blending has to be set on the SVG itself to reach the page beneath it. */
+.reader__container .epub-view > svg {
+  mix-blend-mode: var(--highlight-blend);
+}
+
+.reader__container .reader-hl {
+  fill: var(--highlight);
+  fill-opacity: var(--highlight-opacity);
+}
+
+.highlights {
+  margin-top: 22px;
+}
+
+.highlights__heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.highlight-item__text {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding-left: 8px;
+  border-left: 3px solid var(--highlight);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.highlight-item--focused {
+  background: var(--surface-alt);
+  outline: 1px solid var(--accent);
+}
+
+.selection-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px var(--shadow);
+}
+
+.selection-bar .btn {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.selection-bar--note {
+  flex-direction: column;
+  align-items: stretch;
+  width: 360px;
+  padding: 12px;
+}
+
+.selection-bar--note textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+
+.selection-bar__quote {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding-left: 8px;
+  border-left: 3px solid var(--highlight);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.selection-bar__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

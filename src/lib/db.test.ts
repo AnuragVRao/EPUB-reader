@@ -150,6 +150,44 @@ describe('clearOtherBooksData', () => {
   });
 });
 
+describe('highlights', () => {
+  const highlight = (id: string, note?: string) => ({
+    id,
+    cfiRange: `epubcfi(/6/2!/4/2,/1:0,/1:${id})`,
+    text: `passage ${id}`,
+    createdAt: 1,
+    ...(note ? { note } : {}),
+  });
+
+  it('returns an empty list for an unknown book', async () => {
+    expect(await db.getHighlights('nope')).toEqual([]);
+  });
+
+  it('round-trips highlights per book, notes included', async () => {
+    await db.saveHighlights('book-a', [highlight('1'), highlight('2', 'remember this')]);
+    await db.saveHighlights('book-b', [highlight('3')]);
+
+    expect(await db.getHighlights('book-a')).toEqual([highlight('1'), highlight('2', 'remember this')]);
+    expect((await db.getHighlights('book-b')).map((h) => h.id)).toEqual(['3']);
+  });
+
+  it('is removed along with the rest of a book\'s data', async () => {
+    await db.saveHighlights('gone', [highlight('1')]);
+    await db.saveHighlights('kept', [highlight('2')]);
+    await db.deleteBookData('gone');
+    expect(await db.getHighlights('gone')).toEqual([]);
+    expect(await db.getHighlights('kept')).toHaveLength(1);
+  });
+
+  it('counts as other-book data when clearing', async () => {
+    await db.saveHighlights('keep', [highlight('1')]);
+    await db.saveHighlights('old', [highlight('2')]);
+    expect(await db.clearOtherBooksData('keep')).toBe(1);
+    expect(await db.getHighlights('old')).toEqual([]);
+    expect(await db.getHighlights('keep')).toHaveLength(1);
+  });
+});
+
 function shelfBook(bookId: string, bytes = 4) {
   return { bookId, filename: `${bookId}.epub`, data: new ArrayBuffer(bytes), title: `Title ${bookId}`, author: 'Author' };
 }

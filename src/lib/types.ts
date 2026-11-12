@@ -101,3 +101,20 @@ export interface LibraryLimits {
   maxBooks: number;
   maxBytes: number;
 }
+
+/** A highlighted passage, optionally with a note. */
+export interface Highlight {
+  id: string;
+  /** EPUB CFI range covering the highlighted text. */
+  cfiRange: string;
+  /** The highlighted text (clipped), for listing without the book loaded. */
+  text: string;
+  note?: string;
+  createdAt: number;
+}
+
+/** Text currently selected in the book, ready to be highlighted. */
+export interface TextSelection {
+  cfiRange: string;
+  text: string;
+}
