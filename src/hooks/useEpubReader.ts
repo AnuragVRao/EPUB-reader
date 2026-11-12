@@ -21,6 +21,7 @@ import { prepareCover } from '../lib/cover';
 import { getHighlights, saveHighlights } from '../lib/db';
 import type { Highlight, TextSelection } from '../lib/types';
 import { swipeDirection, type TouchPoint } from '../lib/swipe';
+import { extractNoteText, findNoteElement, noteLinkKind } from '../lib/footnotes';
 
 // Puts the open book on the shelf (or marks it as just opened) so it can be
 // reopened from the start screen without the file.
@@ -83,6 +84,61 @@ function eraseHighlight(rendition: Rendition, cfiRange: string): void {
     }
   } catch (err) {
     console.warn('Could not remove a highlight', err);
+  }
+}
+
+/** A footnote shown in place: its text, and where the link would have gone. */
+export interface BookNote {
+  text: string;
+  /** Pass to `goToHref` to visit the note where it sits in the book. */
+  target: string;
+}
+
+interface NoteSection {
+  index: number;
+  url: string;
+  document?: Document;
+  load: (request: Function) => Promise<unknown>;
+  unload: () => void;
+}
+
+// Works out where a footnote link points and, if the target reads as a note,
+// its text. `target` is always the place epub.js itself would have navigated
+// to, so the caller can fall back to plain navigation.
+async function resolveNote(
+  book: Book,
+  contents: Contents,
+  href: string,
+  marked: boolean,
+): Promise<{ target: string; text: string | null }> {
+  let target = href;
+  try {
+    const current = book.spine.get(contents.sectionIndex) as unknown as NoteSection;
+    // Same resolution epub.js applies to links: against the section's own
+    // path, then made relative to the package document.
+    const url = new URL(href, new URL(current.url, 'http://book.invalid/'));
+    const path = (book.path as unknown as { relative: (to: string) => string }).relative(
+      decodeURIComponent(url.pathname),
+    );
+    target = `${path}${url.hash}`;
+    const id = decodeURIComponent(url.hash.slice(1));
+    const section = book.spine.get(path) as unknown as NoteSection | null;
+    if (!section || !id) return { target, text: null };
+
+    if (section.index === current.index) {
+      const element = findNoteElement(contents.document, id);
+      return { target, text: element ? extractNoteText(element, marked) : null };
+    }
+    // Notes collected in another file: read it without displaying it.
+    await section.load(book.load.bind(book));
+    try {
+      const element = section.document ? findNoteElement(section.document, id) : null;
+      return { target, text: element ? extractNoteText(element, marked) : null };
+    } finally {
+      section.unload();
+    }
+  } catch {
+    return { target, text: null };
   }
 }
 
@@ -361,6 +417,9 @@ export interface EpubReaderApi {
   updateHighlightNote: (id: string, note: string) => void;
   /** Drops the current text selection without highlighting it. */
   clearSelection: () => void;
+  /** The footnote whose reference was just clicked, or null. */
+  note: BookNote | null;
+  dismissNote: () => void;
 }
 
 export function useEpubReader(
@@ -415,6 +474,7 @@ export function useEpubReader(
   highlightsRef.current = highlights;
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [clickedHighlight, setClickedHighlight] = useState<{ id: string; seq: number } | null>(null);
+  const [note, setNote] = useState<BookNote | null>(null);
   // Stable for the life of the hook: epub.js keeps the callback for as long
   // as the highlight exists.
   const onHighlightClick = useCallback((id: string) => {
@@ -490,6 +550,38 @@ export function useEpubReader(
       });
     });
 
+    setNote(null);
+
+    // Clicks on footnote references show the note in place of following the
+    // link. Listening in the capture phase gets in ahead of the handler
+    // epub.js puts on every link, which would navigate.
+    const openNote = async (contents: Contents, href: string, marked: boolean) => {
+      const { target, text } = await resolveNote(book, contents, href, marked);
+      if (cancelled) return;
+      if (text) setNote({ text, target });
+      // Not a note after all: do what the link would have done.
+      else rendition.display(target).catch(() => {});
+    };
+    rendition.hooks.content.register((contents: Contents) => {
+      const doc = contents.document;
+      if (!doc) return;
+      doc.addEventListener(
+        'click',
+        (event) => {
+          const element = event.target as Element | null;
+          if (!element?.closest) return;
+          const link = element.closest('a[href]');
+          if (!link) return;
+          const kind = noteLinkKind(link);
+          if (!kind) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void openNote(contents, link.getAttribute('href') ?? '', kind === 'marked');
+        },
+        true,
+      );
+    });
+
     // Swipes land inside the book's iframe, so they are picked up through
     // epub.js's relayed touch events, the same way keys are below.
     let touchStart: TouchPoint | null = null;
@@ -515,6 +607,8 @@ export function useEpubReader(
 
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;
+      // A footnote popup belongs to the page it was opened on.
+      if (cfi !== currentCfiRef.current) setNote(null);
       currentCfiRef.current = cfi;
       if (!relayoutActiveRef.current && !resizePendingRef.current) anchorCfiRef.current = cfi;
       setCurrentCfi(cfi);
@@ -545,6 +639,7 @@ export function useEpubReader(
     // Keys pressed while focus is inside the book's iframe; ReaderView handles
     // the same keys for the app shell.
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNote(null);
       const action = pageKeyAction(event, settingsRef.current.flow);
       if (action) runPageAction(book, rendition, action);
     };
@@ -920,6 +1015,8 @@ export function useEpubReader(
     saveHighlights(bookId, next);
   }, []);
 
+  const dismissNote = useCallback(() => setNote(null), []);
+
   const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
 
   return {
@@ -954,5 +1051,7 @@ export function useEpubReader(
     removeHighlight,
     updateHighlightNote,
     clearSelection,
+    note,
+    dismissNote,
   };
 }

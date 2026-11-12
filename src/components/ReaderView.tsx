@@ -10,6 +10,7 @@ import SearchPanel from './SearchPanel';
 import SettingsPanel from './SettingsPanel';
 import HighlightsPanel from './HighlightsPanel';
 import SelectionBar from './SelectionBar';
+import NotePopup from './NotePopup';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -195,6 +196,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             onHighlight={reader.addHighlight}
             onDismiss={reader.clearSelection}
           />
+          {reader.note && <NotePopup note={reader.note} onClose={reader.dismissNote} onGoTo={reader.goToHref} />}
 
           {reader.loading && (
             <div className="reader__overlay">
