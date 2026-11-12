@@ -382,9 +382,15 @@ function cfiStart(cfi: string): string {
 
 // True when `target` (a point CFI) falls on the page(s) described by `location`.
 function isOnPage(target: string, location: Location): boolean {
+  return isInRange(target, location.start.cfi, location.end.cfi);
+}
+
+// True when the point CFI `target` lies between `start` and `end` inclusive.
+function isInRange(target: string, start: string, end: string): boolean {
+  if (!target || !start || !end) return false;
   try {
     const cfi = new EpubCFI();
-    return cfi.compare(target, location.start.cfi) >= 0 && cfi.compare(target, location.end.cfi) <= 0;
+    return cfi.compare(target, start) >= 0 && cfi.compare(target, end) <= 0;
   } catch {
     return false;
   }
@@ -570,9 +576,10 @@ export function useEpubReader(
   const anchorCfiRef = useRef<string>('');
   // A position the reader has just asked to go to (a TOC entry, bookmark or
   // search match). It usually lands partway down a page, and it - not the top
-  // of that page - is where the reader now is: the next `relocated` adopts it
-  // as the anchor, so the chapter label and TOC highlight name the place that
-  // was chosen rather than whatever section the page happens to start in.
+  // of that page - is where the reader now is: every `relocated` that shows it
+  // adopts it as the anchor, so the chapter label and TOC highlight name the
+  // place that was chosen rather than whatever section the page happens to
+  // start in. Cleared once the reader moves to a page that doesn't show it.
   const pendingAnchorRef = useRef<string>('');
   const relayoutActiveRef = useRef(false);
   // Set from the first resize signal until the debounced re-anchor finishes.
@@ -598,7 +605,8 @@ export function useEpubReader(
   const [currentHref, setCurrentHref] = useState('');
   const [currentTocHref, setCurrentTocHref] = useState('');
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [currentCfi, setCurrentCfi] = useState('');
+  // The CFIs at the start and end of what is on screen.
+  const [currentPage, setCurrentPage] = useState({ start: '', end: '' });
   const [percentage, setPercentage] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
@@ -786,14 +794,15 @@ export function useEpubReader(
         // An explicit jump wins even mid-relayout. Choosing a bookmark closes
         // its panel, which resizes the container: if the anchor stayed frozen
         // on the old position, the resize would re-anchor there and undo the
-        // jump.
+        // jump. The target stays in force while it is on screen: epub.js
+        // reports the same page more than once after a jump, and only a move
+        // to a page without it (a page turn, a scroll) ends it.
         anchorCfiRef.current = target;
-        pendingAnchorRef.current = '';
       } else if (!relayoutActiveRef.current && !resizePendingRef.current) {
         anchorCfiRef.current = cfi;
         pendingAnchorRef.current = '';
       }
-      setCurrentCfi(cfi);
+      setCurrentPage({ start: cfi, end: location.end.cfi });
       setCurrentHref(location.start.href);
       // Report and persist the anchored position rather than this page's
       // start: the anchor is on screen either way, but it doesn't shift with
@@ -850,8 +859,8 @@ export function useEpubReader(
       );
       await resized;
       // Read only now: a jump made while the resize was pending may have
-      // moved the anchor.
-      const anchor = anchorCfiRef.current || currentCfiRef.current;
+      // moved the anchor, or be about to (its target is still pending).
+      const anchor = pendingAnchorRef.current || anchorCfiRef.current || currentCfiRef.current;
       if (anchor && bookIdRef.current) await displayAndSettle(rendition, anchor);
       // Unfreeze the anchor unless another resize arrived meanwhile (its own
       // remeasure is already queued and will do this).
@@ -1036,18 +1045,30 @@ export function useEpubReader(
   // Shows `target` (an href or CFI) and records where exactly the reader asked
   // to be. epub.js reports the new location a frame after display() resolves,
   // so the pending anchor set here is in place by the time `relocated` fires.
-  const displayTarget = useCallback((target: string, resolveAnchor: (rendition: Rendition) => string) => {
-    const rendition = renditionRef.current;
-    if (!rendition) return Promise.resolve();
-    return rendition.display(target).then(() => {
-      if (renditionRef.current !== rendition) return;
-      try {
-        pendingAnchorRef.current = resolveAnchor(rendition);
-      } catch {
-        pendingAnchorRef.current = '';
-      }
-    });
-  }, []);
+  //
+  // The `relocated` events of the jump itself can arrive before or after
+  // display() resolves, and choosing a bookmark or search result usually
+  // closes a panel at the same moment, starting a resize. So a target known up
+  // front (a CFI) is recorded before displaying, and once the jump has landed
+  // the location is reported again: the anchor is then adopted however those
+  // events were ordered, instead of a resize re-anchoring on the old page.
+  const displayTarget = useCallback(
+    (target: string, resolveAnchor: (rendition: Rendition) => string, knownAnchor = '') => {
+      const rendition = renditionRef.current;
+      if (!rendition) return Promise.resolve();
+      pendingAnchorRef.current = knownAnchor;
+      return rendition.display(target).then(() => {
+        if (renditionRef.current !== rendition) return;
+        try {
+          pendingAnchorRef.current = knownAnchor || resolveAnchor(rendition);
+        } catch {
+          pendingAnchorRef.current = '';
+        }
+        if (pendingAnchorRef.current) (rendition as unknown as { reportLocation: () => void }).reportLocation();
+      });
+    },
+    [],
+  );
 
   const goToHref = useCallback(
     (href: string) => {
@@ -1067,26 +1088,32 @@ export function useEpubReader(
 
   const goToCfi = useCallback(
     (cfi: string) => {
-      displayTarget(cfi, () => cfiStart(cfi)).catch(() => {});
+      displayTarget(cfi, () => '', cfiStart(cfi)).catch(() => {});
     },
     [displayTarget],
   );
 
+  // Toggles the bookmark for the page on screen. A new bookmark marks the
+  // reader's anchored position - the place the chapter label names, which
+  // after a jump can be partway down the page - so returning to it lands on
+  // the same text. Any bookmark that falls on the visible page counts as this
+  // page's, including ones saved at a page start by earlier versions.
   const toggleBookmark = useCallback(() => {
     const bookId = bookIdRef.current;
-    const cfi = currentCfiRef.current;
+    const cfi = anchorCfiRef.current || currentCfiRef.current;
     const rendition = renditionRef.current;
     if (!bookId || !cfi || !rendition) return;
+    const { start, end } = currentPage;
+    const onPage = (b: Bookmark) => b.cfi === cfi || isInRange(b.cfi, start, end);
 
-    const isBookmarked = bookmarksRef.current.some((b) => b.cfi === cfi);
+    const isBookmarked = bookmarksRef.current.some(onPage);
     // Read the excerpt outside the state updater so the updater stays pure.
     const excerpt = isBookmarked ? '' : getExcerpt(rendition, cfi);
 
     setBookmarks((prev) => {
-      const existing = prev.find((b) => b.cfi === cfi);
       let next: Bookmark[];
-      if (existing) {
-        next = prev.filter((b) => b.id !== existing.id);
+      if (prev.some(onPage)) {
+        next = prev.filter((b) => !onPage(b));
       } else {
         const bookmark: Bookmark = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1100,7 +1127,7 @@ export function useEpubReader(
       saveBookmarks(bookId, next);
       return next;
     });
-  }, [currentChapterLabel]);
+  }, [currentChapterLabel, currentPage]);
 
   const removeBookmark = useCallback((id: string) => {
     const bookId = bookIdRef.current;
@@ -1189,7 +1216,7 @@ export function useEpubReader(
       if (!rendition) return;
       clearSearchMatch();
       searchMarkRef.current = cfi;
-      displayTarget(cfi, () => cfiStart(cfi))
+      displayTarget(cfi, () => '', cfiStart(cfi))
         .then(() => {
           // Skip if the book closed or another match was chosen meanwhile.
           if (renditionRef.current !== rendition || searchMarkRef.current !== cfi) return;
@@ -1310,7 +1337,7 @@ export function useEpubReader(
   const dismissNote = useCallback(() => setNote(null), []);
   const dismissZoom = useCallback(() => setZoomedImage(null), []);
 
-  const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
+  const isCurrentBookmarked = bookmarks.some((b) => isInRange(b.cfi, currentPage.start, currentPage.end));
 
   return {
     containerRef,

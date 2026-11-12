@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ReaderSettings, ThemeName } from '../lib/types';
 import { DEFAULT_SETTINGS, loadSettings, persistSettings, resolveTheme } from '../lib/settings';
 
@@ -30,11 +30,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Debounced: dragging the TOC edge updates settings on every pointermove.
+  // A save still pending when the page goes away (reload, tab closed) is
+  // written straight away, or a change made just before it would be lost.
+  const pendingSaveRef = useRef<ReaderSettings | null>(null);
   useEffect(() => {
-    // Debounced: dragging the TOC edge updates settings on every pointermove.
-    const timeout = setTimeout(() => persistSettings(settings), 250);
+    pendingSaveRef.current = settings;
+    const timeout = setTimeout(() => {
+      pendingSaveRef.current = null;
+      persistSettings(settings);
+    }, 250);
     return () => clearTimeout(timeout);
   }, [settings]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!pendingSaveRef.current) return;
+      persistSettings(pendingSaveRef.current);
+      pendingSaveRef.current = null;
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
 
   const value = useMemo<SettingsContextValue>(
     () => ({
