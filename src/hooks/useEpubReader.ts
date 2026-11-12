@@ -22,6 +22,158 @@ import { pageKeyAction, type PageKeyAction } from '../lib/keys';
 import { buildSearchRegex, excerptAround, findMatches, type SearchMatchOptions } from '../lib/search';
 import { ReadingSpeed, loadReadingSpeed, minutesToRead, persistReadingSpeed } from '../lib/readingTime';
 import type { Bookmark, ReaderSettings, SavedBookInfo, SearchResult, ThemeName, TocItem } from '../lib/types';
+import { addBookToLibrary } from '../lib/db';
+import { prepareCover } from '../lib/cover';
+import { getHighlights, saveHighlights } from '../lib/db';
+import type { Highlight, TextSelection } from '../lib/types';
+import { swipeDirection, type TouchPoint } from '../lib/swipe';
+import { extractNoteText, findNoteElement, noteLinkKind } from '../lib/footnotes';
+import { markZoomableImages, zoomableImage, type BookImage } from '../lib/bookImages';
+
+// Puts the open book on the shelf (or marks it as just opened) so it can be
+// reopened from the start screen without the file.
+async function shelveBook(book: Book, bookId: string, data: ArrayBuffer, filename: string): Promise<void> {
+  try {
+    const { title = '', creator = '' } = book.packaging?.metadata ?? {};
+    let cover: Blob | undefined;
+    try {
+      await book.loaded.cover;
+      // `book.cover` is the cover's path inside the archive. Reading it from
+      // the archive avoids fetching the blob URL that coverUrl() would make.
+      const source = book as unknown as {
+        cover?: string;
+        archive?: { getBlob: (url: string) => Promise<Blob> | undefined };
+      };
+      if (source.cover && source.archive) cover = await source.archive.getBlob(source.cover);
+    } catch {
+      // No readable cover (or the book was closed meanwhile): shelve without.
+    }
+    await addBookToLibrary({
+      bookId,
+      filename,
+      data,
+      title,
+      author: creator,
+      cover: cover ? await prepareCover(cover) : undefined,
+    });
+  } catch (err) {
+    // Storage full or unavailable. The book stays readable; it just won't be
+    // on the shelf.
+    console.warn('Could not add the book to the library', err);
+  }
+}
+
+// Highlights are drawn by epub.js's annotation layer: an SVG laid over each
+// section's iframe, in the app document (so App.css styles it, not the book
+// themes). The layer redraws them itself whenever a section is re-rendered.
+const HIGHLIGHT_CLASS = 'reader-hl';
+const HIGHLIGHT_TEXT_LENGTH = 500;
+
+function drawHighlight(rendition: Rendition, highlight: Highlight, onClick: (id: string) => void): void {
+  try {
+    rendition.annotations.highlight(highlight.cfiRange, { id: highlight.id }, () => onClick(highlight.id), HIGHLIGHT_CLASS);
+  } catch (err) {
+    console.warn('Could not draw a highlight', err);
+  }
+}
+
+// Removes an epub.js annotation of the given type ('highlight', 'underline').
+function eraseAnnotation(rendition: Rendition, cfiRange: string, type: string): void {
+  try {
+    rendition.annotations.remove(cfiRange, type);
+    // epub.js only unlinks the annotation from its per-section index while
+    // looping over rendered views. With none on screen the stale entry would
+    // make the next render of that section throw, so unlink it here too.
+    const index = (rendition.annotations as unknown as { _annotationsBySectionIndex?: Record<string, string[]> })
+      ._annotationsBySectionIndex;
+    const hash = encodeURI(`${cfiRange}${type}`);
+    if (index) {
+      for (const key of Object.keys(index)) index[key] = index[key].filter((entry) => entry !== hash);
+    }
+  } catch (err) {
+    console.warn(`Could not remove a ${type} annotation`, err);
+  }
+}
+
+function eraseHighlight(rendition: Rendition, cfiRange: string): void {
+  eraseAnnotation(rendition, cfiRange, 'highlight');
+}
+
+/** A footnote shown in place: its text, and where the link would have gone. */
+export interface BookNote {
+  text: string;
+  /** Pass to `goToHref` to visit the note where it sits in the book. */
+  target: string;
+}
+
+interface NoteSection {
+  index: number;
+  url: string;
+  document?: Document;
+  load: (request: Function) => Promise<unknown>;
+  unload: () => void;
+}
+
+// Works out where a footnote link points and, if the target reads as a note,
+// its text. `target` is always the place epub.js itself would have navigated
+// to, so the caller can fall back to plain navigation.
+async function resolveNote(
+  book: Book,
+  contents: Contents,
+  href: string,
+  marked: boolean,
+): Promise<{ target: string; text: string | null }> {
+  let target = href;
+  try {
+    const current = book.spine.get(contents.sectionIndex) as unknown as NoteSection;
+    // Same resolution epub.js applies to links: against the section's own
+    // path, then made relative to the package document.
+    const url = new URL(href, new URL(current.url, 'http://book.invalid/'));
+    const path = (book.path as unknown as { relative: (to: string) => string }).relative(
+      decodeURIComponent(url.pathname),
+    );
+    target = `${path}${url.hash}`;
+    const id = decodeURIComponent(url.hash.slice(1));
+    const section = book.spine.get(path) as unknown as NoteSection | null;
+    if (!section || !id) return { target, text: null };
+
+    if (section.index === current.index) {
+      const element = findNoteElement(contents.document, id);
+      return { target, text: element ? extractNoteText(element, marked) : null };
+    }
+    // Notes collected in another file: read it without displaying it.
+    await section.load(book.load.bind(book));
+    try {
+      const element = section.document ? findNoteElement(section.document, id) : null;
+      return { target, text: element ? extractNoteText(element, marked) : null };
+    } finally {
+      section.unload();
+    }
+  } catch {
+    return { target, text: null };
+  }
+}
+
+function hasTextSelection(rendition: Rendition): boolean {
+  try {
+    return (rendition.getContents() as unknown as Contents[]).some((contents) => {
+      const selection = contents.window?.getSelection();
+      return Boolean(selection && !selection.isCollapsed);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function clearTextSelection(rendition: Rendition): void {
+  try {
+    for (const contents of rendition.getContents() as unknown as Contents[]) {
+      contents.window?.getSelection()?.removeAllRanges();
+    }
+  } catch {
+    // Views are mid-rebuild; there is no selection to clear.
+  }
+}
 
 function toTocItems(items: NavItem[]): TocItem[] {
   return items.map((item, index) => ({
@@ -364,7 +516,7 @@ export interface EpubReaderApi {
   clearSearchMatch: () => void;
   /** Deletes bookmarks/progress/locations for every book except this one. Returns how many books were cleared. */
   clearOtherBooks: () => Promise<number>;
-  /** Bookmarks and reading positions for every book, as an export file. */
+  /** Bookmarks, highlights and reading positions for every book, as an export file. */
   exportData: () => Promise<BackupFile>;
   /**
    * Merges a parsed export file into the saved data. Throws with a
@@ -375,6 +527,24 @@ export interface EpubReaderApi {
   listSavedBooks: () => Promise<SavedBook[]>;
   /** Deletes one other book's bookmarks/progress/locations. The open book is refused. */
   removeSavedBook: (bookId: string) => Promise<void>;
+  highlights: Highlight[];
+  /** Text selected in the book right now, or null. */
+  selection: TextSelection | null;
+  /** The highlight last clicked on the page; `seq` changes with every click. */
+  clickedHighlight: { id: string; seq: number } | null;
+  /** Highlights `selection`, optionally with a note, and clears the selection. */
+  addHighlight: (selection: TextSelection, note?: string) => void;
+  removeHighlight: (id: string) => void;
+  /** Sets a highlight's note. An empty note removes it. */
+  updateHighlightNote: (id: string, note: string) => void;
+  /** Drops the current text selection without highlighting it. */
+  clearSelection: () => void;
+  /** The footnote whose reference was just clicked, or null. */
+  note: BookNote | null;
+  dismissNote: () => void;
+  /** The illustration that was just clicked, to show full size, or null. */
+  zoomedImage: BookImage | null;
+  dismissZoom: () => void;
 }
 
 export function useEpubReader(
@@ -382,7 +552,11 @@ export function useEpubReader(
   settings: ReaderSettings,
   /** The resolved theme to render (`settings.theme` may be 'auto'). */
   theme: ThemeName,
+  /** Name of the file `data` came from, recorded with the book on the shelf. */
+  filename: string = '',
 ): EpubReaderApi {
+  const filenameRef = useRef(filename);
+  filenameRef.current = filename;
   const containerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -430,6 +604,22 @@ export function useEpubReader(
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const bookmarksRef = useRef<Bookmark[]>([]);
   bookmarksRef.current = bookmarks;
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const highlightsRef = useRef<Highlight[]>([]);
+  highlightsRef.current = highlights;
+  const [selection, setSelection] = useState<TextSelection | null>(null);
+  const [clickedHighlight, setClickedHighlight] = useState<{ id: string; seq: number } | null>(null);
+  const [note, setNote] = useState<BookNote | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<BookImage | null>(null);
+  // Stable for the life of the hook: epub.js keeps the callback for as long
+  // as the highlight exists.
+  const onHighlightClick = useCallback((id: string) => {
+    const rendition = renditionRef.current;
+    // A click that ends a drag-selection over a highlight is a selection,
+    // not a request to open the highlight.
+    if (rendition && hasTextSelection(rendition)) return;
+    setClickedHighlight((prev) => ({ id, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
 
   useEffect(() => {
     if (!data || !containerRef.current) return;
@@ -500,8 +690,96 @@ export function useEpubReader(
       doc.addEventListener('drop', blockFileDrop);
     });
 
+    setHighlights([]);
+    setSelection(null);
+    setClickedHighlight(null);
+
+    // epub.js reports a finished text selection (debounced) as a CFI range.
+    const onSelected = (cfiRange: string, contents: Contents) => {
+      const text = contents.window?.getSelection()?.toString().replace(/\s+/g, ' ').trim() ?? '';
+      if (!text) return;
+      setSelection({
+        cfiRange,
+        text: text.length > HIGHLIGHT_TEXT_LENGTH ? `${text.slice(0, HIGHLIGHT_TEXT_LENGTH).trimEnd()}…` : text,
+      });
+    };
+    rendition.on('selected', onSelected);
+    // It never reports the selection going away, so watch for that directly.
+    rendition.hooks.content.register((contents: Contents) => {
+      const doc = contents.document;
+      if (!doc) return;
+      doc.addEventListener('selectionchange', () => {
+        const current = doc.getSelection();
+        if (!current || current.isCollapsed) setSelection(null);
+      });
+    });
+
+    setNote(null);
+    setZoomedImage(null);
+
+    // Clicks on footnote references show the note in place of following the
+    // link. Listening in the capture phase gets in ahead of the handler
+    // epub.js puts on every link, which would navigate.
+    const openNote = async (contents: Contents, href: string, marked: boolean) => {
+      const { target, text } = await resolveNote(book, contents, href, marked);
+      if (cancelled) return;
+      if (text) setNote({ text, target });
+      // Not a note after all: do what the link would have done.
+      else rendition.display(target).catch(() => {});
+    };
+    rendition.hooks.content.register((contents: Contents) => {
+      const doc = contents.document;
+      if (!doc) return;
+      markZoomableImages(doc);
+      doc.addEventListener(
+        'click',
+        (event) => {
+          const element = event.target as Element | null;
+          if (!element?.closest) return;
+          const link = element.closest('a[href]');
+          if (!link) {
+            // Not a link: an illustration opens full size instead.
+            const image = zoomableImage(element);
+            if (image && !hasTextSelection(rendition)) setZoomedImage(image);
+            return;
+          }
+          const kind = noteLinkKind(link);
+          if (!kind) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void openNote(contents, link.getAttribute('href') ?? '', kind === 'marked');
+        },
+        true,
+      );
+    });
+
+    // Swipes land inside the book's iframe, so they are picked up through
+    // epub.js's relayed touch events, the same way keys are below.
+    let touchStart: TouchPoint | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      // A second finger means a pinch, not a swipe.
+      const touch = event.touches.length === 1 ? event.touches[0] : null;
+      touchStart = touch ? { x: touch.clientX, y: touch.clientY, time: Date.now() } : null;
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      const start = touchStart;
+      touchStart = null;
+      const touch = event.changedTouches[0];
+      // Scrolled mode uses horizontal drags for nothing, but a stray one
+      // jumping a whole chapter would be worse than doing nothing.
+      if (!start || !touch || settingsRef.current.flow !== 'paginated') return;
+      // Dragging a selection handle is not a page turn.
+      if (hasTextSelection(rendition)) return;
+      const direction = swipeDirection(start, { x: touch.clientX, y: touch.clientY, time: Date.now() });
+      if (direction) runPageAction(book, rendition, direction);
+    };
+    rendition.on('touchstart', onTouchStart);
+    rendition.on('touchend', onTouchEnd);
+
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;
+      // A footnote popup belongs to the page it was opened on.
+      if (cfi !== currentCfiRef.current) setNote(null);
       currentCfiRef.current = cfi;
       const target = pendingAnchorRef.current;
       if (target && isOnPage(target, location)) {
@@ -548,6 +826,10 @@ export function useEpubReader(
     // Keys pressed while focus is inside the book's iframe; ReaderView handles
     // the same keys for the app shell.
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setNote(null);
+        setZoomedImage(null);
+      }
       const action = pageKeyAction(event, settingsRef.current.flow);
       if (action) runPageAction(book, rendition, action);
     };
@@ -609,6 +891,13 @@ export function useEpubReader(
         ]);
         if (cancelled) return;
         setBookmarks(storedBookmarks);
+        getHighlights(bookId)
+          .then((stored) => {
+            if (cancelled) return;
+            setHighlights(stored);
+            for (const highlight of stored) drawHighlight(rendition, highlight, onHighlightClick);
+          })
+          .catch((err: unknown) => console.warn('Could not load highlights', err));
 
         // Once the location index exists, back-fill the percentage for the
         // page already on screen (relocated may have fired before it).
@@ -639,6 +928,8 @@ export function useEpubReader(
         if (cancelled) return;
         refreshPercentage();
         setLoading(false);
+        // Only once a page has rendered, so a broken EPUB never reaches the shelf.
+        void shelveBook(book, bookId, data, filenameRef.current);
       } catch (err) {
         console.error('Failed to open EPUB', err);
         if (!cancelled) {
@@ -654,6 +945,9 @@ export function useEpubReader(
       resizeObserver.disconnect();
       rendition.off('relocated', onRelocated);
       rendition.off('keyup', onKeyUp);
+      rendition.off('selected', onSelected);
+      rendition.off('touchstart', onTouchStart);
+      rendition.off('touchend', onTouchEnd);
       rendition.destroy();
       book.destroy();
       bookRef.current = null;
@@ -885,12 +1179,8 @@ export function useEpubReader(
   const clearSearchMatch = useCallback(() => {
     const cfi = searchMarkRef.current;
     searchMarkRef.current = '';
-    if (!cfi) return;
-    try {
-      renditionRef.current?.annotations.remove(cfi, SEARCH_MARK_TYPE);
-    } catch {
-      // The view holding the mark is already gone.
-    }
+    const rendition = renditionRef.current;
+    if (cfi && rendition) eraseAnnotation(rendition, cfi, SEARCH_MARK_TYPE);
   }, []);
 
   const showSearchMatch = useCallback(
@@ -930,14 +1220,95 @@ export function useEpubReader(
 
   const importData = useCallback(async (raw: unknown): Promise<ImportSummary> => {
     const summary = await importBackup(parseBackup(raw));
-    // The open book's bookmarks are held in state; pick up any that arrived.
+    // The open book's bookmarks and highlights are held in state; pick up any
+    // that arrived, and draw the new highlights on the page.
     const bookId = bookIdRef.current;
     if (bookId) {
-      const stored = await getBookmarks(bookId);
-      if (bookIdRef.current === bookId) setBookmarks(stored);
+      const [storedBookmarks, storedHighlights] = await Promise.all([getBookmarks(bookId), getHighlights(bookId)]);
+      if (bookIdRef.current === bookId) {
+        setBookmarks(storedBookmarks);
+        const rendition = renditionRef.current;
+        const known = new Set(highlightsRef.current.map((h) => h.cfiRange));
+        if (rendition) {
+          for (const highlight of storedHighlights) {
+            if (!known.has(highlight.cfiRange)) drawHighlight(rendition, highlight, onHighlightClick);
+          }
+        }
+        highlightsRef.current = storedHighlights;
+        setHighlights(storedHighlights);
+      }
     }
     return summary;
+  }, [onHighlightClick]);
+
+  const clearSelection = useCallback(() => {
+    const rendition = renditionRef.current;
+    if (rendition) clearTextSelection(rendition);
+    setSelection(null);
   }, []);
+
+  const addHighlight = useCallback(
+    (target: TextSelection, note?: string) => {
+      const bookId = bookIdRef.current;
+      const rendition = renditionRef.current;
+      if (!bookId || !rendition || !target.cfiRange) return;
+      const trimmedNote = note?.trim();
+      const existing = highlightsRef.current.find((h) => h.cfiRange === target.cfiRange);
+      let next: Highlight[];
+      if (existing) {
+        // Same passage again: nothing new to draw, but a note can be added.
+        next = trimmedNote
+          ? highlightsRef.current.map((h) => (h.id === existing.id ? { ...h, note: trimmedNote } : h))
+          : highlightsRef.current;
+      } else {
+        const highlight: Highlight = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          cfiRange: target.cfiRange,
+          text: target.text,
+          createdAt: Date.now(),
+        };
+        if (trimmedNote) highlight.note = trimmedNote;
+        drawHighlight(rendition, highlight, onHighlightClick);
+        next = [...highlightsRef.current, highlight];
+      }
+      highlightsRef.current = next;
+      setHighlights(next);
+      saveHighlights(bookId, next);
+      clearSelection();
+    },
+    [clearSelection, onHighlightClick],
+  );
+
+  const removeHighlight = useCallback((id: string) => {
+    const bookId = bookIdRef.current;
+    const rendition = renditionRef.current;
+    const target = highlightsRef.current.find((h) => h.id === id);
+    if (!bookId || !target) return;
+    if (rendition) eraseHighlight(rendition, target.cfiRange);
+    const next = highlightsRef.current.filter((h) => h.id !== id);
+    highlightsRef.current = next;
+    setHighlights(next);
+    saveHighlights(bookId, next);
+  }, []);
+
+  const updateHighlightNote = useCallback((id: string, note: string) => {
+    const bookId = bookIdRef.current;
+    if (!bookId) return;
+    const trimmed = note.trim();
+    const next = highlightsRef.current.map((h) => {
+      if (h.id !== id) return h;
+      const updated: Highlight = { ...h };
+      if (trimmed) updated.note = trimmed;
+      else delete updated.note;
+      return updated;
+    });
+    highlightsRef.current = next;
+    setHighlights(next);
+    saveHighlights(bookId, next);
+  }, []);
+
+  const dismissNote = useCallback(() => setNote(null), []);
+  const dismissZoom = useCallback(() => setZoomedImage(null), []);
 
   const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
 
@@ -972,5 +1343,16 @@ export function useEpubReader(
     importData,
     listSavedBooks: listSaved,
     removeSavedBook,
+    highlights,
+    selection,
+    clickedHighlight,
+    addHighlight,
+    removeHighlight,
+    updateHighlightNote,
+    clearSelection,
+    note,
+    dismissNote,
+    zoomedImage,
+    dismissZoom,
   };
 }

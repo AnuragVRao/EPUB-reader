@@ -9,6 +9,10 @@ import TocSidebar from './TocSidebar';
 import BookmarksPanel from './BookmarksPanel';
 import SearchPanel from './SearchPanel';
 import SettingsPanel from './SettingsPanel';
+import HighlightsPanel from './HighlightsPanel';
+import SelectionBar from './SelectionBar';
+import NotePopup from './NotePopup';
+import ImageZoom from './ImageZoom';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -17,14 +21,20 @@ interface ReaderViewProps {
 }
 
 const PANEL_TITLES: Record<PanelName, string> = {
-  bookmarks: 'Bookmarks',
+  bookmarks: 'Bookmarks and highlights',
   search: 'Search',
   settings: 'Display Settings',
 };
 
+// Matches the phone breakpoint in App.css, where the contents list and side
+// panel become full-screen overlays.
+function isPhoneLayout(): boolean {
+  return window.matchMedia('(max-width: 640px)').matches;
+}
+
 export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewProps) {
   const { settings, theme, updateSettings } = useSettings();
-  const reader = useEpubReader(data, settings, theme);
+  const reader = useEpubReader(data, settings, theme, fallbackTitle);
   const [activePanel, setActivePanel] = useState<PanelName | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -48,6 +58,11 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const togglePanel = useCallback((panel: PanelName) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
   }, []);
+
+  // Clicking a highlight on the page opens the list with that one picked out.
+  useEffect(() => {
+    if (reader.clickedHighlight) setActivePanel('bookmarks');
+  }, [reader.clickedHighlight]);
 
   useEffect(() => {
     const onKeyUp = (event: KeyboardEvent) => {
@@ -90,9 +105,18 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const handleSelectHref = useCallback(
     (href: string) => {
       reader.goToHref(href);
+      // On a phone the contents list covers the whole page: get out of the way.
+      if (isPhoneLayout()) updateSettings({ tocOpen: false });
     },
-    [reader],
+    [reader, updateSettings],
   );
+
+  // The contents list defaults to open, which on a phone would hide the book
+  // behind it as soon as one is opened.
+  useEffect(() => {
+    if (isPhoneLayout()) updateSettings({ tocOpen: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectCfi = useCallback(
     (cfi: string) => {
@@ -205,6 +229,14 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             </div>
           )}
 
+          <SelectionBar
+            selection={reader.selection}
+            onHighlight={reader.addHighlight}
+            onDismiss={reader.clearSelection}
+          />
+          {reader.note && <NotePopup note={reader.note} onClose={reader.dismissNote} onGoTo={reader.goToHref} />}
+          {reader.zoomedImage && <ImageZoom image={reader.zoomedImage} onClose={reader.dismissZoom} />}
+
           {reader.loading && (
             <div className="reader__overlay">
               <div className="spinner" aria-label="Loading book" />
@@ -230,6 +262,15 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onSelect={handleSelectCfi}
                 onRemove={reader.removeBookmark}
                 onUpdate={reader.updateBookmark}
+              />
+            )}
+            {activePanel === 'bookmarks' && (
+              <HighlightsPanel
+                highlights={reader.highlights}
+                focusId={reader.clickedHighlight?.id}
+                onSelect={handleSelectCfi}
+                onRemove={reader.removeHighlight}
+                onUpdateNote={reader.updateHighlightNote}
               />
             )}
             {activePanel === 'search' && (

@@ -80,3 +80,52 @@ export interface SearchResult {
   matchLength: number;
   href: string;
 }
+
+/** Stands in for the book file in `currentBook` once the book is on the shelf. */
+export interface CurrentBookPointer {
+  bookId: string;
+}
+
+/** A book kept on the shelf. The file itself is stored separately, under the same key. */
+export interface LibraryBook {
+  /** epub.js's `book.key()`, the same key the per-book stores use. */
+  bookId: string;
+  filename: string;
+  title: string;
+  author: string;
+  /** A small copy of the cover image, when the book has one. */
+  cover?: { data: ArrayBuffer; type: string };
+  /** Size of the stored file in bytes. */
+  size: number;
+  addedAt: number;
+  lastOpenedAt: number;
+}
+
+/** A shelf entry together with how far the book has been read. */
+export interface LibraryEntry extends LibraryBook {
+  /** Fraction read (0-1), or null when no reading position is stored. */
+  percentage: number | null;
+}
+
+/** How much the shelf may hold before the least recently opened books are dropped. */
+export interface LibraryLimits {
+  maxBooks: number;
+  maxBytes: number;
+}
+
+/** A highlighted passage, optionally with a note. */
+export interface Highlight {
+  id: string;
+  /** EPUB CFI range covering the highlighted text. */
+  cfiRange: string;
+  /** The highlighted text (clipped), for listing without the book loaded. */
+  text: string;
+  note?: string;
+  createdAt: number;
+}
+
+/** Text currently selected in the book, ready to be highlighted. */
+export interface TextSelection {
+  cfiRange: string;
+  text: string;
+}

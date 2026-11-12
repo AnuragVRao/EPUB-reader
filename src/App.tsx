@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { SettingsProvider } from './context/SettingsContext';
 import DropZone from './components/DropZone';
 import BookDropOverlay from './components/BookDropOverlay';
@@ -7,6 +7,9 @@ import BookDropOverlay from './components/BookDropOverlay';
 // once there's a book to show so the drop zone appears quickly.
 const ReaderView = lazy(() => import('./components/ReaderView'));
 import { clearCurrentBook, loadCurrentBook, saveCurrentBook } from './lib/db';
+import { openLibraryBook } from './lib/db';
+import Library from './components/Library';
+import { onLaunchedWithFile } from './lib/pwa';
 import './App.css';
 
 function App() {
@@ -17,12 +20,14 @@ function App() {
   const [bookVersion, setBookVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [checkingStorage, setCheckingStorage] = useState(true);
+  const launchedWithFileRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     loadCurrentBook()
       .then((stored) => {
-        if (cancelled || !stored) return;
+        // A file the app was launched with wins over the book from last time.
+        if (cancelled || !stored || launchedWithFileRef.current) return;
         setBookData(stored.data);
         setFilename(stored.filename);
       })
@@ -65,11 +70,37 @@ function App() {
     setBookVersion((v) => v + 1);
   }, []);
 
+  // Installed as an app, the reader can be the handler for .epub files; the
+  // file then arrives through the launch queue rather than a drop.
+  useEffect(() => {
+    onLaunchedWithFile((file) => {
+      launchedWithFileRef.current = true;
+      void handleFile(file);
+    });
+  }, [handleFile]);
+
   const handleClose = useCallback(() => {
     setBookData(null);
     setFilename('');
     setError(null);
     clearCurrentBook().catch((err: unknown) => console.warn('Could not clear the stored book', err));
+  }, []);
+
+  const handleOpenFromLibrary = useCallback(async (bookId: string) => {
+    setError(null);
+    try {
+      const stored = await openLibraryBook(bookId);
+      if (!stored) {
+        setError('That book is no longer stored in this browser. Drop the file again to read it.');
+        return;
+      }
+      setFilename(stored.filename);
+      setBookData(stored.data);
+      setBookVersion((v) => v + 1);
+    } catch (err) {
+      console.warn('Could not open the stored book', err);
+      setError('Could not open that book from storage.');
+    }
   }, []);
 
   return (
@@ -95,7 +126,9 @@ function App() {
             )}
           </Suspense>
         ) : (
-          <DropZone onFile={handleFile} error={error} />
+          <DropZone onFile={handleFile} error={error}>
+            <Library onOpen={handleOpenFromLibrary} />
+          </DropZone>
         )}
       </div>
     </SettingsProvider>

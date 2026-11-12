@@ -329,7 +329,7 @@ function Transfer({
   onImport: (raw: unknown) => Promise<ImportSummary>;
   onImported: () => Promise<void>;
 }) {
-  const [message, setMessage] = useState('Move bookmarks and reading positions to another browser as a file.');
+  const [message, setMessage] = useState('Move bookmarks, highlights and reading positions to another browser as a file.');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = async () => {
@@ -366,7 +366,7 @@ function Transfer({
       setMessage(
         summary.books === 0
           ? 'Everything in that file was already here.'
-          : `Imported ${plural(summary.bookmarks, 'bookmark')} and ${plural(summary.positions, 'reading position')} for ${plural(summary.books, 'book')}.`,
+          : `Imported ${plural(summary.bookmarks, 'bookmark')}, ${plural(summary.highlights, 'highlight')} and ${plural(summary.positions, 'reading position')} for ${plural(summary.books, 'book')}.`,
       );
       await onImported();
     } catch (err) {

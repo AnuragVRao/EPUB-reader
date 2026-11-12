@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mergeBookmarks, parseBackup } from './backup';
-import type { Bookmark } from './types';
+import { mergeBookmarks, mergeHighlights, parseBackup } from './backup';
+import type { Bookmark, Highlight } from './types';
 
 function bookmark(n: number, extra: Partial<Bookmark> = {}): Bookmark {
   return { id: `id-${n}`, cfi: `epubcfi(/6/2!/4/${n})`, label: `Chapter ${n}`, excerpt: 'text', createdAt: n, ...extra };
@@ -59,6 +59,42 @@ describe('parseBackup', () => {
     expect(typeof a.bookmarks[1].id).toBe('string');
     // Out-of-range percentage is clamped; a bad timestamp becomes "oldest".
     expect(b.progress).toEqual({ cfi: 'epubcfi(/6/4!/4/2)', percentage: 1, updatedAt: 0 });
+  });
+});
+
+describe('highlights in a backup', () => {
+  const highlight = (n: number, extra: Partial<Highlight> = {}): Highlight => ({
+    id: `h-${n}`,
+    cfiRange: `epubcfi(/6/2!/4/${n},/1:0,/1:5)`,
+    text: `passage ${n}`,
+    createdAt: n,
+    ...extra,
+  });
+
+  it('are kept when well-formed and dropped when not', () => {
+    const parsed = parseBackup({
+      app: 'epub-reader',
+      version: 1,
+      books: [
+        { bookId: 'only-highlights', highlights: [highlight(1, { note: 'why' }), { cfiRange: 'nope' }, { text: 'no range' }] },
+        { bookId: 'nothing-valid', highlights: [{ cfiRange: 5 }] },
+      ],
+    });
+    expect(parsed.books).toEqual([{ bookId: 'only-highlights', bookmarks: [], highlights: [highlight(1, { note: 'why' })] }]);
+  });
+
+  it('merge by range, keeping the existing copy and filling in a missing note', () => {
+    const mine = highlight(1);
+    const { highlights, added } = mergeHighlights([mine, highlight(3)], [highlight(1, { id: 'x', note: 'theirs' }), highlight(2)]);
+    expect(added).toBe(1);
+    expect(highlights.map((h) => h.id)).toEqual(['h-1', 'h-2', 'h-3']);
+    expect(highlights[0].note).toBe('theirs');
+  });
+
+  it('merging the same highlights twice changes nothing', () => {
+    const first = mergeHighlights([], [highlight(1), highlight(2)]);
+    const second = mergeHighlights(first.highlights, [highlight(1), highlight(2)]);
+    expect(second).toEqual({ highlights: first.highlights, added: 0 });
   });
 });
 

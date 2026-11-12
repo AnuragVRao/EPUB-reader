@@ -1,7 +1,7 @@
-import type { Bookmark } from './types';
+import type { Bookmark, Highlight } from './types';
 
 /**
- * The export/import file: bookmarks and reading positions for every book,
+ * The export/import file: bookmarks, highlights and reading positions for every book,
  * keyed by the same `book.key()` identifier the database uses, so they attach
  * to the right book in another browser as soon as that book is opened there.
  * The books themselves and the regenerable location index are not included.
@@ -18,6 +18,8 @@ export interface BackupBook {
   title?: string;
   progress?: { cfi: string; percentage: number; updatedAt: number };
   bookmarks: Bookmark[];
+  /** Absent in files exported before highlights existed. */
+  highlights?: Highlight[];
 }
 
 export const BACKUP_APP = 'epub-reader';
@@ -56,6 +58,20 @@ function parseBookmark(raw: unknown): Bookmark | null {
   return bookmark;
 }
 
+function parseHighlight(raw: unknown): Highlight | null {
+  if (!isRecord(raw) || !isCfi(raw.cfiRange)) return null;
+  const createdAt = finite(raw.createdAt) ?? Date.now();
+  const highlight: Highlight = {
+    id: text(raw.id) || `${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+    cfiRange: raw.cfiRange,
+    text: text(raw.text) ?? '',
+    createdAt,
+  };
+  const note = text(raw.note)?.trim();
+  if (note) highlight.note = note;
+  return highlight;
+}
+
 function parseBook(raw: unknown): BackupBook | null {
   if (!isRecord(raw)) return null;
   const bookId = text(raw.bookId);
@@ -68,6 +84,10 @@ function parseBook(raw: unknown): BackupBook | null {
   if (Array.isArray(raw.bookmarks)) {
     book.bookmarks = raw.bookmarks.map(parseBookmark).filter((b): b is Bookmark => b !== null);
   }
+  if (Array.isArray(raw.highlights)) {
+    const highlights = raw.highlights.map(parseHighlight).filter((h): h is Highlight => h !== null);
+    if (highlights.length) book.highlights = highlights;
+  }
   if (isRecord(raw.progress) && isCfi(raw.progress.cfi)) {
     const percentage = finite(raw.progress.percentage) ?? 0;
     book.progress = {
@@ -76,7 +96,7 @@ function parseBook(raw: unknown): BackupBook | null {
       updatedAt: finite(raw.progress.updatedAt) ?? 0,
     };
   }
-  return book.progress || book.bookmarks.length ? book : null;
+  return book.progress || book.bookmarks.length || book.highlights?.length ? book : null;
 }
 
 /**
@@ -123,4 +143,27 @@ export function mergeBookmarks(existing: Bookmark[], incoming: Bookmark[]): { bo
     added += 1;
   }
   return { bookmarks: [...byCfi.values()].sort((a, b) => a.createdAt - b.createdAt), added };
+}
+
+/**
+ * Adds `incoming` highlights to `existing`, by the same rules as bookmarks: a
+ * highlight over the same range is the same one, the existing copy wins, and
+ * it picks up a note from the incoming copy if it has none.
+ */
+export function mergeHighlights(existing: Highlight[], incoming: Highlight[]): { highlights: Highlight[]; added: number } {
+  const byRange = new Map(existing.map((h) => [h.cfiRange, h]));
+  const ids = new Set(existing.map((h) => h.id));
+  let added = 0;
+  for (const highlight of incoming) {
+    const current = byRange.get(highlight.cfiRange);
+    if (current) {
+      if (!current.note && highlight.note) byRange.set(highlight.cfiRange, { ...current, note: highlight.note });
+      continue;
+    }
+    const id = ids.has(highlight.id) ? `${highlight.id}-${Math.random().toString(36).slice(2, 8)}` : highlight.id;
+    ids.add(id);
+    byRange.set(highlight.cfiRange, { ...highlight, id });
+    added += 1;
+  }
+  return { highlights: [...byRange.values()].sort((a, b) => a.createdAt - b.createdAt), added };
 }

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { serviceWorker } from './pwa/vite-plugin-sw.ts'
 
 // EPUBs are untrusted HTML rendered in same-origin iframes, which inherit this
 // policy. It keeps the "nothing leaves the browser" promise enforceable: no
@@ -43,7 +44,10 @@ function contentSecurityPolicy(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), contentSecurityPolicy()],
+  // Relative, so the built site works from any path - the root of a domain or
+  // a GitHub Pages project sub-path - without being told which.
+  base: './',
+  plugins: [react(), contentSecurityPolicy(), serviceWorker()],
   test: {
     // The tests cover the storage layer only, so plain Node is enough; the
     // browser storage APIs they need are stubbed per test file.
