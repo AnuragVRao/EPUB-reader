@@ -15,6 +15,7 @@ import {
 } from '../lib/db';
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
+import { ReadingSpeed, loadReadingSpeed, minutesToRead, persistReadingSpeed } from '../lib/readingTime';
 import type { Bookmark, ReaderSettings, SavedBookInfo, SearchResult, ThemeName, TocItem } from '../lib/types';
 
 interface FindMatch {
@@ -226,6 +227,35 @@ function findActiveTocItem(
   }
 }
 
+/** Estimated reading time remaining, in minutes, at the reader's measured pace. */
+export interface TimeLeft {
+  /** To the end of the current chapter file. */
+  chapter: number;
+  /** To the end of the book. */
+  book: number;
+}
+
+/** Where the page on screen sits within its chapter. */
+export interface PageInfo {
+  page: number;
+  total: number;
+}
+
+// How far the reader is from the end of the chapter and of the book, measured
+// in entries of the location index. `location` is the reader's own index.
+function locationsLeft(book: Book, sectionIndex: number, location: number): { chapter: number; book: number } {
+  const total = (book.locations as unknown as { total: number }).total;
+  let chapterEnd = total;
+  const next = book.spine.get(sectionIndex + 1) as { cfiBase?: string } | null;
+  if (next?.cfiBase) {
+    // A CFI at the very top of the next section's document: the location
+    // index resolves it to that section's first entry.
+    const end = book.locations.locationFromCfi(`epubcfi(${next.cfiBase}!/2)`) as unknown as number;
+    if (end >= location) chapterEnd = end;
+  }
+  return { chapter: Math.max(0, chapterEnd - location), book: Math.max(0, total - location) };
+}
+
 export interface SavedBook extends SavedBookInfo {
   /** True for the book currently open in the reader. */
   current: boolean;
@@ -248,6 +278,10 @@ export interface EpubReaderApi {
   isCurrentBookmarked: boolean;
   /** Fraction of the book read (0-1), or null until the location index is ready. */
   percentage: number | null;
+  /** Estimated reading time left, or null until the location index is ready. */
+  timeLeft: TimeLeft | null;
+  /** Page number within the chapter, or null when epub.js doesn't report one. */
+  pageInfo: PageInfo | null;
   next: () => void;
   prev: () => void;
   /** Runs a page-turn action: next/prev page, or the start/end of the book. */
@@ -308,6 +342,8 @@ export function useEpubReader(
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [currentCfi, setCurrentCfi] = useState('');
   const [percentage, setPercentage] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const bookmarksRef = useRef<Bookmark[]>([]);
   bookmarksRef.current = bookmarks;
 
@@ -322,6 +358,30 @@ export function useEpubReader(
     setCurrentChapterLabel('');
     setCurrentTocHref('');
     setPercentage(null);
+    setTimeLeft(null);
+    setPageInfo(null);
+
+    const speed = new ReadingSpeed(loadReadingSpeed());
+    let sectionIndex = 0;
+    // Recomputes the time-left estimate for the anchored position. `sample`
+    // is false when the position didn't change through reading (a relayout,
+    // or the location index only just becoming available).
+    const updateTimeLeft = (position: string, sample: boolean) => {
+      // `total` stays 0 while the index is still being generated, even though
+      // entries are already accumulating.
+      const total = (book.locations as unknown as { total: number }).total;
+      if (!position || !total) return;
+      const location = book.locations.locationFromCfi(position) as unknown as number;
+      if (sample) {
+        speed.record(location, Date.now());
+        if (speed.measured) persistReadingSpeed(speed.charsPerMinute);
+      }
+      const left = locationsLeft(book, sectionIndex, location);
+      setTimeLeft({
+        chapter: minutesToRead(left.chapter, speed.charsPerMinute),
+        book: minutesToRead(left.book, speed.charsPerMinute),
+      });
+    };
 
     const book = ePub(data.slice(0));
     bookRef.current = book;
@@ -373,6 +433,10 @@ export function useEpubReader(
       setCurrentChapterLabel(tocItem?.label.trim() || findChapterLabel(book, location.start.href));
       const pct = book.locations.length() ? book.locations.percentageFromCfi(position) : null;
       setPercentage(pct);
+      sectionIndex = location.start.index;
+      updateTimeLeft(position, !relayoutActiveRef.current && !resizePendingRef.current);
+      const displayed = location.start.displayed;
+      setPageInfo(displayed?.total ? { page: displayed.page, total: displayed.total } : null);
       const bid = bookIdRef.current;
       if (bid) {
         saveProgress({
@@ -455,6 +519,7 @@ export function useEpubReader(
           const position = anchorCfiRef.current || currentCfiRef.current;
           if (cancelled || !position || !book.locations.length()) return;
           setPercentage(book.locations.percentageFromCfi(position));
+          updateTimeLeft(position, false);
         };
 
         if (storedLocations) {
@@ -725,6 +790,8 @@ export function useEpubReader(
     bookmarks,
     isCurrentBookmarked,
     percentage,
+    timeLeft,
+    pageInfo,
     next,
     prev,
     turn,

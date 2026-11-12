@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useEpubReader } from '../hooks/useEpubReader';
 import { useSettings } from '../context/SettingsContext';
 import { pageKeyAction } from '../lib/keys';
+import { formatDuration } from '../lib/readingTime';
 import Toolbar, { type PanelName } from './Toolbar';
 import SidePanel from './SidePanel';
 import TocSidebar from './TocSidebar';
@@ -28,6 +29,21 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const percentLabel = reader.percentage === null ? '' : `${Math.round(reader.percentage * 100)}%`;
+
+  const timeLeftLabel = reader.timeLeft ? `${formatDuration(reader.timeLeft.chapter)} left in chapter` : '';
+  const timeLeftDetail = reader.timeLeft ? `About ${formatDuration(reader.timeLeft.book)} left in the book` : '';
+
+  // Read out by screen readers after each page turn. The book's iframe gives
+  // them no other signal that the content changed.
+  const announcement = [
+    reader.currentChapterLabel,
+    reader.pageInfo && settings.flow === 'paginated'
+      ? `page ${reader.pageInfo.page} of ${reader.pageInfo.total} in chapter`
+      : '',
+    percentLabel ? `${percentLabel} of book` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const togglePanel = useCallback((panel: PanelName) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -100,8 +116,14 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
         progressLabel={percentLabel}
+        timeLeftLabel={timeLeftLabel}
+        timeLeftDetail={timeLeftDetail}
         onClose={onClose}
       />
+
+      <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+        {reader.loading ? '' : announcement}
+      </div>
 
       <div className="reader__body">
         {settings.tocOpen && (

@@ -13,6 +13,10 @@ interface ToolbarProps {
   onToggleFullscreen: () => void;
   /** e.g. "42%"; empty while the location index is still being built. */
   progressLabel: string;
+  /** e.g. "12 min left in chapter"; empty when there is no estimate. */
+  timeLeftLabel: string;
+  /** Longer form for the tooltip, e.g. "About 3 h left in the book". */
+  timeLeftDetail: string;
   onClose: () => void;
 }
 
@@ -28,6 +32,8 @@ export default function Toolbar({
   isFullscreen,
   onToggleFullscreen,
   progressLabel,
+  timeLeftLabel,
+  timeLeftDetail,
   onClose,
 }: ToolbarProps) {
   return (
@@ -79,7 +85,8 @@ export default function Toolbar({
 
       <div className="toolbar__spacer">
         {progressLabel && (
-          <span className="toolbar__progress" title="Reading progress">
+          <span className="toolbar__progress" title={timeLeftDetail || 'Reading progress'}>
+            {timeLeftLabel && <span className="toolbar__time-left">{timeLeftLabel} · </span>}
             {progressLabel}
           </span>
         )}

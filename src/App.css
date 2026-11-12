@@ -739,6 +739,13 @@ input[type='range'] {
   transition: width 0.25s ease;
 }
 
+/* The estimate is the first thing to go when the toolbar gets tight. */
+@media (max-width: 900px) {
+  .toolbar__time-left {
+    display: none;
+  }
+}
+
 /* Search status */
 
 .search-panel__status {
