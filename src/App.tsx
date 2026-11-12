@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { SettingsProvider } from './context/SettingsContext';
 import DropZone from './components/DropZone';
 import BookDropOverlay from './components/BookDropOverlay';
@@ -9,6 +9,7 @@ const ReaderView = lazy(() => import('./components/ReaderView'));
 import { clearCurrentBook, loadCurrentBook, saveCurrentBook } from './lib/db';
 import { openLibraryBook } from './lib/db';
 import Library from './components/Library';
+import { onLaunchedWithFile } from './lib/pwa';
 import './App.css';
 
 function App() {
@@ -19,12 +20,14 @@ function App() {
   const [bookVersion, setBookVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [checkingStorage, setCheckingStorage] = useState(true);
+  const launchedWithFileRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     loadCurrentBook()
       .then((stored) => {
-        if (cancelled || !stored) return;
+        // A file the app was launched with wins over the book from last time.
+        if (cancelled || !stored || launchedWithFileRef.current) return;
         setBookData(stored.data);
         setFilename(stored.filename);
       })
@@ -66,6 +69,15 @@ function App() {
     setBookData(data);
     setBookVersion((v) => v + 1);
   }, []);
+
+  // Installed as an app, the reader can be the handler for .epub files; the
+  // file then arrives through the launch queue rather than a drop.
+  useEffect(() => {
+    onLaunchedWithFile((file) => {
+      launchedWithFileRef.current = true;
+      void handleFile(file);
+    });
+  }, [handleFile]);
 
   const handleClose = useCallback(() => {
     setBookData(null);
