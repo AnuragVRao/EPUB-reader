@@ -27,3 +27,23 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # Drives the production build in a real browser: open, navigate, bookmark,
+  # reload, search, shelf, footnotes.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Playwright output
+test-results/
+playwright-report/
+
 # Temporary git worktrees made by Claude Code agents
 .claude/worktrees/
 
