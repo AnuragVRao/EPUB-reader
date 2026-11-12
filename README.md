@@ -16,6 +16,12 @@ A browser-based EPUB reader. Drag and drop an `.epub` file to start reading — 
 - Drop another EPUB onto the window to switch books
 - See which books have saved data and remove it per book
 - Fullscreen mode
+- A shelf of recently opened books on the start screen, with cover and progress, so a book can be reopened without the file (the 20 most recent, up to 300 MB; older ones are dropped first)
+- Highlights with optional notes: select text to highlight it, and find highlights listed with the bookmarks
+- Footnotes open in a popup over the page instead of navigating away
+- Click an illustration to view it full size
+- Touch support: swipe to turn pages, finger-sized controls, and a phone layout
+- Installable as an app and usable offline; once installed it can open `.epub` files directly (Chromium browsers)
 
 ## Getting started
 
@@ -32,13 +38,18 @@ Then open the printed local URL in your browser.
 npm run build
 ```
 
-Outputs a static site to `dist/`, which can be hosted on any static file host.
+Outputs a static site to `dist/`, which can be hosted on any static file host. Asset paths are relative, so it works from the root of a domain or from a sub-path without configuration. The build also writes `dist/sw.js`, the service worker that makes the site work offline; it is not used by `npm run dev`.
+
+## Deployment
+
+`.github/workflows/deploy.yml` builds the site and publishes it to GitHub Pages on every push to `main`. It needs Pages enabled once in the repository settings (Settings → Pages → Source: GitHub Actions).
 
 ## Tech stack
 
 - React + TypeScript + Vite
 - [epub.js](https://github.com/futurepress/epub.js) for EPUB parsing and rendering
-- IndexedDB (via `idb`) for storing the current book, bookmarks, and reading progress
+- IndexedDB (via `idb`) for storing the shelf of books, bookmarks, highlights, and reading progress
+- A small hand-written service worker for offline use (no PWA dependency)
 
 ## Roadmap
 
