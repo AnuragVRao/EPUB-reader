@@ -5,14 +5,18 @@ import { applyThemeAndFonts, registerThemes } from '../lib/epubThemes';
 import {
   clearOtherBooksData,
   deleteBookData,
+  exportBackup,
   getBookmarks,
   getLocations,
   getProgress,
+  importBackup,
+  type ImportSummary,
   listSavedBooks,
   saveBookmarks,
   saveLocations,
   saveProgress,
 } from '../lib/db';
+import { parseBackup, type BackupFile } from '../lib/backup';
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
 import { buildSearchRegex, excerptAround, findMatches, type SearchMatchOptions } from '../lib/search';
@@ -360,6 +364,13 @@ export interface EpubReaderApi {
   clearSearchMatch: () => void;
   /** Deletes bookmarks/progress/locations for every book except this one. Returns how many books were cleared. */
   clearOtherBooks: () => Promise<number>;
+  /** Bookmarks and reading positions for every book, as an export file. */
+  exportData: () => Promise<BackupFile>;
+  /**
+   * Merges a parsed export file into the saved data. Throws with a
+   * user-facing message if the value is not an export file.
+   */
+  importData: (raw: unknown) => Promise<ImportSummary>;
   /** Lists every book with saved data, flagging the one that is open. */
   listSavedBooks: () => Promise<SavedBook[]>;
   /** Deletes one other book's bookmarks/progress/locations. The open book is refused. */
@@ -908,6 +919,17 @@ export function useEpubReader(
     await deleteBookData(bookId);
   }, []);
 
+  const importData = useCallback(async (raw: unknown): Promise<ImportSummary> => {
+    const summary = await importBackup(parseBackup(raw));
+    // The open book's bookmarks are held in state; pick up any that arrived.
+    const bookId = bookIdRef.current;
+    if (bookId) {
+      const stored = await getBookmarks(bookId);
+      if (bookIdRef.current === bookId) setBookmarks(stored);
+    }
+    return summary;
+  }, []);
+
   const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
 
   return {
@@ -937,6 +959,8 @@ export function useEpubReader(
     showSearchMatch,
     clearSearchMatch,
     clearOtherBooks,
+    exportData: exportBackup,
+    importData,
     listSavedBooks: listSaved,
     removeSavedBook,
   };

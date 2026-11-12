@@ -841,6 +841,17 @@ input[type='range'] {
   color: var(--text-muted);
 }
 
+/* Export / import */
+
+.transfer {
+  margin-top: 16px;
+}
+
+.transfer__buttons {
+  display: flex;
+  gap: 8px;
+}
+
 /* Clear saved data */
 
 .clear-data__hint {

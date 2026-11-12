@@ -112,6 +112,94 @@ describe('deleteBookData', () => {
   });
 });
 
+describe('export and import', () => {
+  it('exports bookmarks and positions, but not the location index or the book file', async () => {
+    await db.saveBookmarks('book-a', [bookmark('1')]);
+    await db.saveProgress({ bookId: 'book-a', cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.25, updatedAt: 100, title: 'Book A' });
+    await db.saveLocations('book-a', '["loc"]');
+    await db.saveLocations('book-b', '["loc"]');
+    await db.saveBookmarks('book-c', []);
+    await db.saveCurrentBook({ filename: 'a.epub', data: new ArrayBuffer(4), savedAt: 1 });
+
+    const file = await db.exportBackup();
+    expect(file.app).toBe('epub-reader');
+    expect(file.version).toBe(1);
+    expect(file.books).toEqual([
+      {
+        bookId: 'book-a',
+        title: 'Book A',
+        progress: { cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.25, updatedAt: 100 },
+        bookmarks: [bookmark('1')],
+      },
+    ]);
+  });
+
+  it('round-trips into an empty database', async () => {
+    await db.saveBookmarks('book-a', [bookmark('1'), bookmark('2')]);
+    await db.saveProgress({ bookId: 'book-a', cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.25, updatedAt: 100, title: 'Book A' });
+    const file = await db.exportBackup();
+
+    db = await freshDb();
+    expect(await db.importBackup(file)).toEqual({ books: 1, bookmarks: 2, positions: 1 });
+    expect(await db.getBookmarks('book-a')).toEqual([bookmark('1'), bookmark('2')]);
+    expect(await db.getProgress('book-a')).toEqual({
+      bookId: 'book-a',
+      cfi: 'epubcfi(/6/2!/4/2)',
+      percentage: 0.25,
+      updatedAt: 100,
+      title: 'Book A',
+    });
+    expect((await db.listSavedBooks())[0]?.title).toBe('Book A');
+  });
+
+  it('merges into existing data without removing anything', async () => {
+    await db.saveBookmarks('book-a', [bookmark('1')]);
+    await db.saveProgress({ bookId: 'book-a', cfi: 'epubcfi(/6/2!/4/8)', percentage: 0.8, updatedAt: 500, title: 'Book A' });
+    await db.saveBookmarks('book-z', [bookmark('9')]);
+
+    const summary = await db.importBackup({
+      app: 'epub-reader',
+      version: 1,
+      exportedAt: 1,
+      books: [
+        {
+          bookId: 'book-a',
+          // Older than what is stored: must not move the reader backwards.
+          progress: { cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.1, updatedAt: 100 },
+          bookmarks: [bookmark('1'), bookmark('2')],
+        },
+        { bookId: 'book-b', bookmarks: [], progress: { cfi: 'epubcfi(/6/2!/4/4)', percentage: 0.3, updatedAt: 50 } },
+      ],
+    });
+
+    expect(summary).toEqual({ books: 2, bookmarks: 1, positions: 1 });
+    expect((await db.getBookmarks('book-a')).map((b) => b.id)).toEqual(['1', '2']);
+    expect((await db.getProgress('book-a'))?.percentage).toBe(0.8);
+    expect((await db.getProgress('book-b'))?.percentage).toBe(0.3);
+    expect(await db.getBookmarks('book-z')).toHaveLength(1);
+  });
+
+  it('takes a newer reading position from the file', async () => {
+    await db.saveProgress({ bookId: 'book-a', cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.1, updatedAt: 100, title: 'Book A' });
+    const summary = await db.importBackup({
+      app: 'epub-reader',
+      version: 1,
+      exportedAt: 1,
+      books: [{ bookId: 'book-a', bookmarks: [], progress: { cfi: 'epubcfi(/6/2!/4/8)', percentage: 0.9, updatedAt: 200 } }],
+    });
+    expect(summary).toEqual({ books: 1, bookmarks: 0, positions: 1 });
+    // The title already known for the book is kept.
+    expect(await db.getProgress('book-a')).toMatchObject({ percentage: 0.9, updatedAt: 200, title: 'Book A' });
+  });
+
+  it('reports nothing changed when the same file is imported twice', async () => {
+    await db.saveBookmarks('book-a', [bookmark('1')]);
+    await db.saveProgress({ bookId: 'book-a', cfi: 'epubcfi(/6/2!/4/2)', percentage: 0.25, updatedAt: 100 });
+    const file = await db.exportBackup();
+    expect(await db.importBackup(file)).toEqual({ books: 0, bookmarks: 0, positions: 0 });
+  });
+});
+
 describe('clearOtherBooksData', () => {
   it('removes every other book and keeps the current one', async () => {
     await db.saveBookmarks('keep', [bookmark('1')]);

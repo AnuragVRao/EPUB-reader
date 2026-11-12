@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { BACKUP_APP, BACKUP_VERSION, mergeBookmarks, type BackupBook, type BackupFile } from './backup';
 import type { Bookmark, Progress, SavedBookInfo, StoredBook, StoredLocations } from './types';
 
 const CURRENT_BOOK_KEY = 'singleton';
@@ -147,6 +148,88 @@ export async function deleteBookData(bookId: string): Promise<void> {
   const tx = db.transaction(stores, 'readwrite');
   await Promise.all(stores.map((name) => tx.objectStore(name).delete(bookId)));
   await tx.done;
+}
+
+/** What an import changed. */
+export interface ImportSummary {
+  /** Books in the file that had something to add. */
+  books: number;
+  /** Bookmarks that were not already present. */
+  bookmarks: number;
+  /** Reading positions taken from the file because they were newer (or the only one). */
+  positions: number;
+}
+
+// Collects every book's bookmarks and reading position into an export file.
+export async function exportBackup(): Promise<BackupFile> {
+  const db = await getDB();
+  const tx = db.transaction(['bookmarks', 'progress'], 'readonly');
+  const [bookmarks, progress] = await Promise.all([
+    tx.objectStore('bookmarks').getAll(),
+    tx.objectStore('progress').getAll(),
+  ]);
+  await tx.done;
+
+  const books = new Map<string, BackupBook>();
+  const entry = (bookId: string): BackupBook => {
+    let book = books.get(bookId);
+    if (!book) {
+      book = { bookId, bookmarks: [] };
+      books.set(bookId, book);
+    }
+    return book;
+  };
+  for (const record of progress) {
+    const book = entry(record.bookId);
+    if (record.title) book.title = record.title;
+    book.progress = { cfi: record.cfi, percentage: record.percentage, updatedAt: record.updatedAt };
+  }
+  for (const record of bookmarks) {
+    if (record.items.length) entry(record.bookId).bookmarks = record.items;
+  }
+  return { app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: Date.now(), books: [...books.values()] };
+}
+
+// Merges an (already validated) export file into the database. Nothing is
+// ever removed: bookmarks are added to the ones already there, and a reading
+// position only replaces the stored one if it is newer. Runs in a single
+// transaction, so a failure part-way leaves the database untouched.
+export async function importBackup(file: BackupFile): Promise<ImportSummary> {
+  const db = await getDB();
+  const tx = db.transaction(['bookmarks', 'progress'], 'readwrite');
+  const bookmarkStore = tx.objectStore('bookmarks');
+  const progressStore = tx.objectStore('progress');
+  const summary: ImportSummary = { books: 0, bookmarks: 0, positions: 0 };
+
+  for (const book of file.books) {
+    let changed = false;
+
+    if (book.bookmarks.length) {
+      const existing = (await bookmarkStore.get(book.bookId))?.items ?? [];
+      const merged = mergeBookmarks(existing, book.bookmarks);
+      // Written even with nothing added, in case a note was filled in.
+      await bookmarkStore.put({ bookId: book.bookId, items: merged.bookmarks }, book.bookId);
+      summary.bookmarks += merged.added;
+      changed = changed || merged.added > 0;
+    }
+
+    if (book.progress) {
+      const existing = await progressStore.get(book.bookId);
+      if (!existing || book.progress.updatedAt > existing.updatedAt) {
+        const record: Progress = { bookId: book.bookId, ...book.progress };
+        const title = book.title ?? existing?.title;
+        if (title) record.title = title;
+        await progressStore.put(record, book.bookId);
+        summary.positions += 1;
+        changed = true;
+      }
+    }
+
+    if (changed) summary.books += 1;
+  }
+
+  await tx.done;
+  return summary;
 }
 
 export async function getLocations(bookId: string): Promise<string | undefined> {

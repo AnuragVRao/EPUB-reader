@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SavedBook } from '../hooks/useEpubReader';
+import type { BackupFile } from '../lib/backup';
+import type { ImportSummary } from '../lib/db';
 import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode, SpreadMode } from '../lib/types';
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from '../lib/typography';
 
@@ -9,6 +11,8 @@ interface SettingsPanelProps {
   onClearOtherBooks: () => Promise<number>;
   onListSavedBooks: () => Promise<SavedBook[]>;
   onRemoveSavedBook: (bookId: string) => Promise<void>;
+  onExportData: () => Promise<BackupFile>;
+  onImportData: (raw: unknown) => Promise<ImportSummary>;
 }
 
 const THEMES: { value: ThemeSetting; label: string }[] = [
@@ -41,6 +45,8 @@ export default function SettingsPanel({
   onClearOtherBooks,
   onListSavedBooks,
   onRemoveSavedBook,
+  onExportData,
+  onImportData,
 }: SettingsPanelProps) {
   return (
     <div className="settings-panel">
@@ -197,7 +203,13 @@ export default function SettingsPanel({
 
       <section className="settings-section">
         <h3>Saved data</h3>
-        <SavedData onList={onListSavedBooks} onRemove={onRemoveSavedBook} onClearOthers={onClearOtherBooks} />
+        <SavedData
+          onList={onListSavedBooks}
+          onRemove={onRemoveSavedBook}
+          onClearOthers={onClearOtherBooks}
+          onExport={onExportData}
+          onImport={onImportData}
+        />
       </section>
     </div>
   );
@@ -217,10 +229,14 @@ function SavedData({
   onList,
   onRemove,
   onClearOthers,
+  onExport,
+  onImport,
 }: {
   onList: () => Promise<SavedBook[]>;
   onRemove: (bookId: string) => Promise<void>;
   onClearOthers: () => Promise<number>;
+  onExport: () => Promise<BackupFile>;
+  onImport: (raw: unknown) => Promise<ImportSummary>;
 }) {
   // null while loading; 'error' when IndexedDB could not be read.
   const [books, setBooks] = useState<SavedBook[] | 'error' | null>(null);
@@ -292,10 +308,100 @@ function SavedData({
         </ul>
       )}
       <ClearOtherBooksButton onClear={clearOthers} />
+      <Transfer onExport={onExport} onImport={onImport} onImported={refresh} />
     </>
   );
 }
 
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+// Export to / import from a JSON file: the way to move bookmarks and reading
+// positions to another browser or device without any server.
+function Transfer({
+  onExport,
+  onImport,
+  onImported,
+}: {
+  onExport: () => Promise<BackupFile>;
+  onImport: (raw: unknown) => Promise<ImportSummary>;
+  onImported: () => Promise<void>;
+}) {
+  const [message, setMessage] = useState('Move bookmarks and reading positions to another browser as a file.');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = async () => {
+    try {
+      const file = await onExport();
+      if (file.books.length === 0) {
+        setMessage('There is nothing to export yet.');
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `epub-reader-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      // Give the download a moment to start before the URL goes away.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setMessage(`Exported data for ${plural(file.books.length, 'book')}.`);
+    } catch {
+      setMessage('Could not export saved data.');
+    }
+  };
+
+  const handleImport = async (file: File | undefined) => {
+    if (!file) return;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(await file.text());
+    } catch {
+      setMessage('That file could not be read as an export.');
+      return;
+    }
+    try {
+      const summary = await onImport(raw);
+      setMessage(
+        summary.books === 0
+          ? 'Everything in that file was already here.'
+          : `Imported ${plural(summary.bookmarks, 'bookmark')} and ${plural(summary.positions, 'reading position')} for ${plural(summary.books, 'book')}.`,
+      );
+      await onImported();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Could not import that file.');
+    }
+  };
+
+  return (
+    <div className="transfer">
+      <div className="transfer__buttons">
+        <button type="button" className="btn" onClick={() => void handleExport()}>
+          Export
+        </button>
+        <button type="button" className="btn" onClick={() => inputRef.current?.click()}>
+          Import
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".json,application/json"
+          className="visually-hidden"
+          aria-label="Import saved data from a file"
+          onChange={(e) => {
+            void handleImport(e.target.files?.[0]);
+            // Allow choosing the same file again.
+            e.target.value = '';
+          }}
+        />
+      </div>
+      <p className="clear-data__hint" aria-live="polite">
+        {message}
+      </p>
+    </div>
+  );
+}
 
 type ClearState = 'idle' | 'confirm' | 'clearing' | { cleared: number } | 'error';
 

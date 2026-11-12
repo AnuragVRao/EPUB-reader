@@ -245,6 +245,8 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onChange={updateSettings}
                 onClearOtherBooks={reader.clearOtherBooks}
                 onListSavedBooks={reader.listSavedBooks}
+                onExportData={reader.exportData}
+                onImportData={reader.importData}
                 onRemoveSavedBook={reader.removeSavedBook}
               />
             )}
