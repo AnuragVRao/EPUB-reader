@@ -503,10 +503,17 @@ export function useEpubReader(
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;
       currentCfiRef.current = cfi;
-      if (!relayoutActiveRef.current && !resizePendingRef.current) {
-        const target = pendingAnchorRef.current;
+      const target = pendingAnchorRef.current;
+      if (target && isOnPage(target, location)) {
+        // An explicit jump wins even mid-relayout. Choosing a bookmark closes
+        // its panel, which resizes the container: if the anchor stayed frozen
+        // on the old position, the resize would re-anchor there and undo the
+        // jump.
+        anchorCfiRef.current = target;
         pendingAnchorRef.current = '';
-        anchorCfiRef.current = target && isOnPage(target, location) ? target : cfi;
+      } else if (!relayoutActiveRef.current && !resizePendingRef.current) {
+        anchorCfiRef.current = cfi;
+        pendingAnchorRef.current = '';
       }
       setCurrentCfi(cfi);
       setCurrentHref(location.start.href);
@@ -551,7 +558,6 @@ export function useEpubReader(
     // Must stay a method call (not a detached reference) to keep `this` bound.
     const remeasure = async () => {
       const generation = resizeGenerationRef.current;
-      const anchor = anchorCfiRef.current || currentCfiRef.current;
       // epub.js answers a resize with its own asynchronous re-display of the
       // current page start, which drifts backwards (see anchorCfiRef). Let
       // that land, then return to the page containing the anchored position.
@@ -561,6 +567,9 @@ export function useEpubReader(
         null,
       );
       await resized;
+      // Read only now: a jump made while the resize was pending may have
+      // moved the anchor.
+      const anchor = anchorCfiRef.current || currentCfiRef.current;
       if (anchor && bookIdRef.current) await displayAndSettle(rendition, anchor);
       // Unfreeze the anchor unless another resize arrived meanwhile (its own
       // remeasure is already queued and will do this).
