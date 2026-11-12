@@ -5,12 +5,15 @@
   --text: #1c1b19;
   --text-muted: #6b6863;
   --border: #dedad2;
-  --accent: #a15c2f;
+  --accent: #995527;
   --accent-contrast: #ffffff;
   --shadow: rgba(28, 27, 25, 0.12);
   --overlay-bg: rgba(246, 244, 240, 0.85);
   /* The book page colour - keep in step with THEME_STYLES in lib/epubThemes.ts. */
   --page-bg: #faf8f5;
+  /* Error text. Every text colour here is at least 4.5:1 (WCAG AA) on the
+     surface, surface-alt and bg colours of its theme. */
+  --danger: #b3261e;
 
   color-scheme: light;
   font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -30,6 +33,7 @@
   --shadow: rgba(0, 0, 0, 0.5);
   --overlay-bg: rgba(23, 24, 26, 0.85);
   --page-bg: #1a1a1a;
+  --danger: #f2958c;
   color-scheme: dark;
 }
 
@@ -38,13 +42,14 @@
   --surface: #f8efdb;
   --surface-alt: #ecdfc0;
   --text: #3a2f22;
-  --text-muted: #7a6a53;
+  --text-muted: #6b5c46;
   --border: #ddcda3;
-  --accent: #8a5a2b;
+  --accent: #7f5226;
   --accent-contrast: #f8efdb;
   --shadow: rgba(58, 47, 34, 0.18);
   --overlay-bg: rgba(241, 230, 205, 0.85);
   --page-bg: #f3e6d0;
+  --danger: #a1241c;
   color-scheme: light;
 }
 
