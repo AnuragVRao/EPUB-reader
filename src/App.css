@@ -746,6 +746,46 @@ input[type='range'] {
   }
 }
 
+/* Search options and match navigation */
+
+.search-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: -8px 0 14px;
+  font-size: 0.85rem;
+}
+
+.search-panel__options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.search-panel__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -6px 0 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.search-panel__nav span {
+  flex: 1;
+}
+
+.search-panel__nav .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.search-result--active {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 /* Search status */
 
 .search-panel__status {

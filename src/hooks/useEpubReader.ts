@@ -15,13 +15,9 @@ import {
 } from '../lib/db';
 import { FILE_DRAG_EVENT, isFileDrag } from '../lib/fileDrop';
 import { pageKeyAction, type PageKeyAction } from '../lib/keys';
+import { buildSearchRegex, excerptAround, findMatches, type SearchMatchOptions } from '../lib/search';
 import { ReadingSpeed, loadReadingSpeed, minutesToRead, persistReadingSpeed } from '../lib/readingTime';
 import type { Bookmark, ReaderSettings, SavedBookInfo, SearchResult, ThemeName, TocItem } from '../lib/types';
-
-interface FindMatch {
-  cfi: string;
-  excerpt: string;
-}
 
 function toTocItems(items: NavItem[]): TocItem[] {
   return items.map((item, index) => ({
@@ -124,7 +120,54 @@ function runPageAction(book: Book, rendition: Rendition, action: PageKeyAction):
 const SEARCH_BATCH_SIZE = 4;
 const EXCERPT_LENGTH = 120;
 
-export interface SearchOptions {
+// The search match shown on the page. Drawn as an epub.js "underline"
+// annotation so it can never collide with (or remove) a "highlight"
+// annotation covering the same text.
+const SEARCH_MARK_TYPE = 'underline';
+const SEARCH_MARK_STYLES = {
+  fill: '#f5a623',
+  'fill-opacity': '0.35',
+  stroke: '#f5a623',
+  'stroke-opacity': '0.9',
+};
+
+interface SearchableSection {
+  href: string;
+  document?: Document;
+  load: (req: Function) => Promise<unknown>;
+  unload: () => void;
+  cfiFromRange: (range: Range) => string;
+}
+
+// Finds `regex` in each text node of a loaded section. Like epub.js's own
+// `section.find`, a match has to sit inside one text node; unlike it, the
+// regex carries the case and whole-word options.
+function findInSection(section: SearchableSection, regex: RegExp): SearchResult[] {
+  const doc = section.document;
+  const root = doc?.body ?? doc?.documentElement;
+  if (!doc || !root) return [];
+  const results: SearchResult[] = [];
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent ?? '';
+    for (const match of findMatches(text, regex)) {
+      const range = doc.createRange();
+      range.setStart(node, match.start);
+      range.setEnd(node, match.start + match.length);
+      const excerpt = excerptAround(text, match.start, match.length);
+      results.push({
+        cfi: section.cfiFromRange(range),
+        excerpt: excerpt.text,
+        matchStart: excerpt.matchStart,
+        matchLength: excerpt.matchLength,
+        href: section.href,
+      });
+    }
+  }
+  return results;
+}
+
+export interface SearchOptions extends SearchMatchOptions {
   signal?: AbortSignal;
   /** Called after each batch with the chapters searched so far and the total. */
   onProgress?: (searched: number, total: number) => void;
@@ -171,6 +214,24 @@ function findChapterLabel(book: Book, href: string): string {
   };
   search(book.navigation.toc);
   return found?.label?.trim() ?? '';
+}
+
+// The start point of `cfi` as a plain CFI. Search matches are range CFIs,
+// which can't be compared against a page's start and end directly.
+function cfiStart(cfi: string): string {
+  const parsed = new EpubCFI(cfi);
+  parsed.collapse(true);
+  return parsed.toString();
+}
+
+// True when `target` (a point CFI) falls on the page(s) described by `location`.
+function isOnPage(target: string, location: Location): boolean {
+  try {
+    const cfi = new EpubCFI();
+    return cfi.compare(target, location.start.cfi) >= 0 && cfi.compare(target, location.end.cfi) <= 0;
+  } catch {
+    return false;
+  }
 }
 
 function flattenToc(items: NavItem[], out: NavItem[] = []): NavItem[] {
@@ -293,6 +354,10 @@ export interface EpubReaderApi {
   /** Renames a bookmark and/or sets its note. An empty note removes it. */
   updateBookmark: (id: string, patch: BookmarkPatch) => void;
   search: (query: string, options?: SearchOptions) => Promise<SearchResult[]>;
+  /** Goes to a search match and marks it on the page, replacing any earlier mark. */
+  showSearchMatch: (cfi: string) => void;
+  /** Removes the search mark from the page. */
+  clearSearchMatch: () => void;
   /** Deletes bookmarks/progress/locations for every book except this one. Returns how many books were cleared. */
   clearOtherBooks: () => Promise<number>;
   /** Lists every book with saved data, flagging the one that is open. */
@@ -318,6 +383,12 @@ export function useEpubReader(
   // anchoring on the new page start would drift back a little every time a
   // panel is toggled or the window resized.
   const anchorCfiRef = useRef<string>('');
+  // A position the reader has just asked to go to (a TOC entry, bookmark or
+  // search match). It usually lands partway down a page, and it - not the top
+  // of that page - is where the reader now is: the next `relocated` adopts it
+  // as the anchor, so the chapter label and TOC highlight name the place that
+  // was chosen rather than whatever section the page happens to start in.
+  const pendingAnchorRef = useRef<string>('');
   const relayoutActiveRef = useRef(false);
   // Set from the first resize signal until the debounced re-anchor finishes.
   // epub.js reacts to window resizes itself, outside the relayout queue, and
@@ -330,6 +401,8 @@ export function useEpubReader(
   themeRef.current = theme;
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const relayoutChainRef = useRef<Promise<void>>(Promise.resolve());
+  // CFI of the search match currently marked on the page, if any.
+  const searchMarkRef = useRef('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -419,7 +492,11 @@ export function useEpubReader(
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;
       currentCfiRef.current = cfi;
-      if (!relayoutActiveRef.current && !resizePendingRef.current) anchorCfiRef.current = cfi;
+      if (!relayoutActiveRef.current && !resizePendingRef.current) {
+        const target = pendingAnchorRef.current;
+        pendingAnchorRef.current = '';
+        anchorCfiRef.current = target && isOnPage(target, location) ? target : cfi;
+      }
       setCurrentCfi(cfi);
       setCurrentHref(location.start.href);
       // Report and persist the anchored position rather than this page's
@@ -564,6 +641,8 @@ export function useEpubReader(
       bookIdRef.current = '';
       currentCfiRef.current = '';
       anchorCfiRef.current = '';
+      pendingAnchorRef.current = '';
+      searchMarkRef.current = '';
       resizePendingRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -640,13 +719,44 @@ export function useEpubReader(
   const next = useCallback(() => turn('next'), [turn]);
   const prev = useCallback(() => turn('prev'), [turn]);
 
-  const goToHref = useCallback((href: string) => {
-    renditionRef.current?.display(href);
+  // Shows `target` (an href or CFI) and records where exactly the reader asked
+  // to be. epub.js reports the new location a frame after display() resolves,
+  // so the pending anchor set here is in place by the time `relocated` fires.
+  const displayTarget = useCallback((target: string, resolveAnchor: (rendition: Rendition) => string) => {
+    const rendition = renditionRef.current;
+    if (!rendition) return Promise.resolve();
+    return rendition.display(target).then(() => {
+      if (renditionRef.current !== rendition) return;
+      try {
+        pendingAnchorRef.current = resolveAnchor(rendition);
+      } catch {
+        pendingAnchorRef.current = '';
+      }
+    });
   }, []);
 
-  const goToCfi = useCallback((cfi: string) => {
-    renditionRef.current?.display(cfi);
-  }, []);
+  const goToHref = useCallback(
+    (href: string) => {
+      displayTarget(href, (rendition) => {
+        const id = href.split('#')[1];
+        if (!id) return '';
+        // The element the link points at, in whichever chapter document is on screen.
+        for (const contents of rendition.getContents() as unknown as Contents[]) {
+          const el = contents.document?.getElementById(id) ?? contents.document?.getElementById(decodeURIComponent(id));
+          if (el) return contents.cfiFromNode(el);
+        }
+        return '';
+      }).catch(() => {});
+    },
+    [displayTarget],
+  );
+
+  const goToCfi = useCallback(
+    (cfi: string) => {
+      displayTarget(cfi, () => cfiStart(cfi)).catch(() => {});
+    },
+    [displayTarget],
+  );
 
   const toggleBookmark = useCallback(() => {
     const bookId = bookIdRef.current;
@@ -714,20 +824,15 @@ export function useEpubReader(
     const book = bookRef.current;
     const trimmed = query.trim();
     if (!book || !trimmed) return [];
+    const regex = buildSearchRegex(trimmed, options);
 
-    const sections: Array<{
-      href: string;
-      load: (req: Function) => Promise<Document>;
-      unload: () => void;
-      find: (q: string) => FindMatch[];
-    }> = [];
-    book.spine.each((section: (typeof sections)[number]) => sections.push(section));
+    const sections: SearchableSection[] = [];
+    book.spine.each((section: SearchableSection) => sections.push(section));
 
-    const searchSection = async (section: (typeof sections)[number]): Promise<SearchResult[]> => {
+    const searchSection = async (section: SearchableSection): Promise<SearchResult[]> => {
       try {
         await section.load(book.load.bind(book));
-        const matches = section.find(trimmed);
-        return matches.map((match) => ({ cfi: match.cfi, excerpt: match.excerpt, href: section.href }));
+        return findInSection(section, regex);
       } catch {
         // One unreadable chapter shouldn't fail the whole search.
         return [];
@@ -756,6 +861,34 @@ export function useEpubReader(
     }
     return all;
   }, []);
+
+  const clearSearchMatch = useCallback(() => {
+    const cfi = searchMarkRef.current;
+    searchMarkRef.current = '';
+    if (!cfi) return;
+    try {
+      renditionRef.current?.annotations.remove(cfi, SEARCH_MARK_TYPE);
+    } catch {
+      // The view holding the mark is already gone.
+    }
+  }, []);
+
+  const showSearchMatch = useCallback(
+    (cfi: string) => {
+      const rendition = renditionRef.current;
+      if (!rendition) return;
+      clearSearchMatch();
+      searchMarkRef.current = cfi;
+      displayTarget(cfi, () => cfiStart(cfi))
+        .then(() => {
+          // Skip if the book closed or another match was chosen meanwhile.
+          if (renditionRef.current !== rendition || searchMarkRef.current !== cfi) return;
+          rendition.annotations.add(SEARCH_MARK_TYPE, cfi, {}, undefined, 'search-match', SEARCH_MARK_STYLES);
+        })
+        .catch(() => {});
+    },
+    [clearSearchMatch, displayTarget],
+  );
 
   const clearOtherBooks = useCallback(async () => {
     const bookId = bookIdRef.current;
@@ -801,6 +934,8 @@ export function useEpubReader(
     removeBookmark,
     updateBookmark,
     search,
+    showSearchMatch,
+    clearSearchMatch,
     clearOtherBooks,
     listSavedBooks: listSaved,
     removeSavedBook,

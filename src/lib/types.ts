@@ -75,5 +75,8 @@ export interface TocItem {
 export interface SearchResult {
   cfi: string;
   excerpt: string;
+  /** Where the matched text sits inside `excerpt`. */
+  matchStart: number;
+  matchLength: number;
   href: string;
 }

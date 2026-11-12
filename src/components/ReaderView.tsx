@@ -102,6 +102,17 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
     [reader],
   );
 
+  // Unlike a bookmark, choosing a search match keeps the panel open so the
+  // next/previous buttons stay to hand - except on a phone-width screen,
+  // where the panel covers the page the match is on.
+  const handleSelectMatch = useCallback(
+    (cfi: string) => {
+      reader.showSearchMatch(cfi);
+      if (window.matchMedia('(max-width: 640px)').matches) setActivePanel(null);
+    },
+    [reader],
+  );
+
   return (
     <div className="reader">
       <Toolbar
@@ -221,7 +232,13 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onUpdate={reader.updateBookmark}
               />
             )}
-            {activePanel === 'search' && <SearchPanel onSearch={reader.search} onSelect={handleSelectCfi} />}
+            {activePanel === 'search' && (
+              <SearchPanel
+                onSearch={reader.search}
+                onSelect={handleSelectMatch}
+                onClearMatch={reader.clearSearchMatch}
+              />
+            )}
             {activePanel === 'settings' && (
               <SettingsPanel
                 settings={settings}
