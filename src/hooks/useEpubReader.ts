@@ -22,6 +22,7 @@ import { getHighlights, saveHighlights } from '../lib/db';
 import type { Highlight, TextSelection } from '../lib/types';
 import { swipeDirection, type TouchPoint } from '../lib/swipe';
 import { extractNoteText, findNoteElement, noteLinkKind } from '../lib/footnotes';
+import { markZoomableImages, zoomableImage, type BookImage } from '../lib/bookImages';
 
 // Puts the open book on the shelf (or marks it as just opened) so it can be
 // reopened from the start screen without the file.
@@ -420,6 +421,9 @@ export interface EpubReaderApi {
   /** The footnote whose reference was just clicked, or null. */
   note: BookNote | null;
   dismissNote: () => void;
+  /** The illustration that was just clicked, to show full size, or null. */
+  zoomedImage: BookImage | null;
+  dismissZoom: () => void;
 }
 
 export function useEpubReader(
@@ -475,6 +479,7 @@ export function useEpubReader(
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [clickedHighlight, setClickedHighlight] = useState<{ id: string; seq: number } | null>(null);
   const [note, setNote] = useState<BookNote | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<BookImage | null>(null);
   // Stable for the life of the hook: epub.js keeps the callback for as long
   // as the highlight exists.
   const onHighlightClick = useCallback((id: string) => {
@@ -551,6 +556,7 @@ export function useEpubReader(
     });
 
     setNote(null);
+    setZoomedImage(null);
 
     // Clicks on footnote references show the note in place of following the
     // link. Listening in the capture phase gets in ahead of the handler
@@ -565,13 +571,19 @@ export function useEpubReader(
     rendition.hooks.content.register((contents: Contents) => {
       const doc = contents.document;
       if (!doc) return;
+      markZoomableImages(doc);
       doc.addEventListener(
         'click',
         (event) => {
           const element = event.target as Element | null;
           if (!element?.closest) return;
           const link = element.closest('a[href]');
-          if (!link) return;
+          if (!link) {
+            // Not a link: an illustration opens full size instead.
+            const image = zoomableImage(element);
+            if (image && !hasTextSelection(rendition)) setZoomedImage(image);
+            return;
+          }
           const kind = noteLinkKind(link);
           if (!kind) return;
           event.preventDefault();
@@ -639,7 +651,10 @@ export function useEpubReader(
     // Keys pressed while focus is inside the book's iframe; ReaderView handles
     // the same keys for the app shell.
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setNote(null);
+      if (event.key === 'Escape') {
+        setNote(null);
+        setZoomedImage(null);
+      }
       const action = pageKeyAction(event, settingsRef.current.flow);
       if (action) runPageAction(book, rendition, action);
     };
@@ -1016,6 +1031,7 @@ export function useEpubReader(
   }, []);
 
   const dismissNote = useCallback(() => setNote(null), []);
+  const dismissZoom = useCallback(() => setZoomedImage(null), []);
 
   const isCurrentBookmarked = bookmarks.some((b) => b.cfi === currentCfi);
 
@@ -1053,5 +1069,7 @@ export function useEpubReader(
     clearSelection,
     note,
     dismissNote,
+    zoomedImage,
+    dismissZoom,
   };
 }

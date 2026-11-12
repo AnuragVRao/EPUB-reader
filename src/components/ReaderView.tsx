@@ -11,6 +11,7 @@ import SettingsPanel from './SettingsPanel';
 import HighlightsPanel from './HighlightsPanel';
 import SelectionBar from './SelectionBar';
 import NotePopup from './NotePopup';
+import ImageZoom from './ImageZoom';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -197,6 +198,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             onDismiss={reader.clearSelection}
           />
           {reader.note && <NotePopup note={reader.note} onClose={reader.dismissNote} onGoTo={reader.goToHref} />}
+          {reader.zoomedImage && <ImageZoom image={reader.zoomedImage} onClose={reader.dismissZoom} />}
 
           {reader.loading && (
             <div className="reader__overlay">

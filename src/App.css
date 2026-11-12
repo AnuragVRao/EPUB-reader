@@ -1230,6 +1230,44 @@ input[type='range'] {
   font-size: 0.85rem;
 }
 
+/* Image zoom */
+
+/* Dark in every theme: a lightbox, not part of the page. */
+.image-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.88);
+  cursor: zoom-out;
+}
+
+.image-zoom:focus {
+  outline: none;
+}
+
+/* Fills the window either way: small images are scaled up, large ones down. */
+.image-zoom img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-zoom__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.image-zoom__close:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
 /* Touch and phone layout */
 
 /* Stops a page-turning swipe from also triggering the browser's
