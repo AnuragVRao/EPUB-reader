@@ -6,15 +6,18 @@ A browser-based EPUB reader. Drag and drop an `.epub` file to start reading — 
 
 - Drag-and-drop or file-picker EPUB loading, parsed entirely in the browser
 - Light, dark, and sepia themes, or follow the system light/dark setting
-- Font size, font family, line spacing, and text justification controls
-- Paginated or scrolled reading modes
+- Font size, font family, line spacing, paragraph spacing, page margins, justification and hyphenation controls
+- Paginated or scrolled reading modes, with one page or a two-page spread
 - Table of contents navigation
 - Bookmarks with an optional name and note (persisted per book)
-- Full-text search within the book
+- Full-text search with match-case and whole-word options, next/previous match, and the match marked on the page
+- Reading progress with an estimate of the time left in the chapter and the book
 - Reading position and bookmarks are saved to IndexedDB and restored automatically, even after closing the tab
 - Keyboard navigation (arrows, Space, PageUp/PageDown, Home/End) and click zones on the page edges
 - Drop another EPUB onto the window to switch books
 - See which books have saved data and remove it per book
+- Export bookmarks and reading positions to a file and import them in another browser
+- A Content Security Policy on the built site: books cannot run scripts or load anything from the network
 - Fullscreen mode
 
 ## Getting started

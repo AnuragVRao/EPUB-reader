@@ -12,7 +12,7 @@ npm run test     # vitest run (npm run test:watch for watch mode)
 npm run preview  # serve the built dist/
 ```
 
-Tests (`src/**/*.test.ts`, Vitest in a plain Node environment) cover only the pure, DOM-free modules: `lib/settings.ts` with a stubbed `localStorage`, `lib/db.ts` on `fake-indexeddb`, and the key mapping in `lib/keys.ts`. Nothing exercises React components or epub.js, so `npm run build` (which type-checks the whole project) is still the main verification step for UI and reader changes — run it after non-trivial changes. CI (`.github/workflows/ci.yml`) runs lint, test and build on pushes to `main` and on pull requests.
+Tests (`src/**/*.test.ts`, Vitest in a plain Node environment) cover only the pure, DOM-free modules under `lib/`: `settings.ts` and `readingTime.ts` with a stubbed `localStorage`, `db.ts` on `fake-indexeddb`, and the logic in `keys.ts`, `search.ts`, `typography.ts` and `backup.ts`. New logic that doesn't need the DOM or epub.js belongs in a `lib/` module with a test, with the hook or component as a thin caller. Nothing exercises React components or epub.js, so `npm run build` (which type-checks the whole project) is still the main verification step for UI and reader changes — run it after non-trivial changes. CI (`.github/workflows/ci.yml`) runs lint, test and build on pushes to `main` and on pull requests.
 
 Two lint warnings are pre-existing and expected (`SettingsContext.tsx` only-export-components, `useEpubReader.ts` exhaustive-deps). Don't treat them as regressions.
 
@@ -39,14 +39,20 @@ Several non-obvious constraints are already encoded here — preserve them when 
 - **Changing flow needs an explicit `clear()` + `display()`.** On-screen views keep stale column/scroll CSS otherwise.
 - **`data.slice(0)` is passed to `ePub()`** — epub.js takes ownership of the buffer, and the original is reused across remounts.
 - `settingsRef` mirrors `settings` so the lifecycle effect can read current values without depending on them and re-creating the book.
-- **`findActiveTocItem` picks one TOC entry, not one file.** Several entries can point into the same chapter file; it compares each entry's anchor element against the page-start CFI. It returns nothing when it can't tell, and `TocPanel` then falls back to highlighting by file.
+- **The anchor CFI, not the page start, is the reader's position.** `anchorCfiRef` drives the percentage, time-left estimate, chapter label, TOC highlight and saved progress, and is what a relayout returns to. It is frozen while a relayout or resize is in flight (their relocations are layout noise) with one exception: `pendingAnchorRef`, set by an explicit jump (TOC entry, bookmark, search match), is adopted whenever its target is on the page, even mid-resize. Without that, choosing a bookmark - which closes its panel and so resizes the container - snaps back to the old position.
+- **Changing spread, like flow, needs `clear()` + `display()`.**
+- **`book.locations.length()` is non-zero while the index is still generating; `locations.total` stays 0 until it is done.** Use `total` to decide whether location-based numbers can be trusted.
+- **Search marks are `underline` annotations**, so they can never collide with (or remove) a `highlight` annotation on the same range - epub.js keys annotations by CFI + type.
+- **`findActiveTocItem` picks one TOC entry, not one file.** Several entries can point into the same chapter file; it compares each entry's anchor element against the anchored position. It returns nothing when it can't tell, and `TocPanel` then falls back to highlighting by file.
 
 ### Persistence — two layers, deliberately split
 
 - **`localStorage`** (`lib/settings.ts`): `ReaderSettings` only. Small, synchronous, needed during the first render.
 - **`IndexedDB`** via `idb` (`lib/db.ts`): four object stores. `currentBook` is a singleton; `bookmarks`, `progress`, and `locations` are all keyed by **`book.key()`** — epub.js's identifier derived from book metadata, not the filename. Reopening the same book from a different file path still restores its bookmarks and position.
 
-`locations` caches epub.js's generated CFI location index (expensive — generated once at 1600 chars/location, then reused) so percentage calculations are instant on reopen.
+`locations` caches epub.js's generated CFI location index (expensive — generated once at 1600 chars/location, then reused) so percentage calculations are instant on reopen. `CHARS_PER_LOCATION` in `lib/readingTime.ts` must match that 1600.
+
+Export/import (`lib/backup.ts` for the file format and validation, `exportBackup`/`importBackup` in `lib/db.ts`) covers bookmarks and progress only. Import is merge-only and treats the file as untrusted input. A new per-book store should be added to the backup format too.
 
 ### Theming — two separate systems
 
@@ -55,9 +61,15 @@ Book content renders inside epub.js iframes, which app CSS cannot reach. So them
 - `lib/epubThemes.ts` registers light/dark/sepia with `rendition.themes` for the iframe content, including its own scrollbar rules.
 - `index.css` / `App.css` style the app shell via CSS custom properties, switched by a `data-theme` attribute that `SettingsContext` writes to `<html>`.
 
-Adding a theme means touching both. `.epub-container` is one exception — epub.js renders it outside the iframe, so it is styled from `App.css`.
+Adding a theme means touching both, and checking its text colours for WCAG AA contrast (4.5:1) on `--surface`, `--surface-alt` and `--bg`. `--page-bg` in `index.css` mirrors the book page colour in `epubThemes.ts` and must change with it. `.epub-container` is one exception — epub.js renders it outside the iframe, so it is styled from `App.css`.
 
 The stored `settings.theme` is a `ThemeSetting` and may be `'auto'`. `SettingsContext` resolves it against `prefers-color-scheme` and exposes the result as `theme` (a `ThemeName`); that resolved value is what goes to `data-theme` and to `applyThemeAndFonts`. epub.js has no theme registered under `'auto'`, so never pass `settings.theme` to it directly.
+
+Typography settings that need rules on elements other than `body` (paragraph spacing, hyphenation) can't go through `rendition.themes.override`, which only targets `body`. `lib/typography.ts` builds a stylesheet that `epubThemes.ts` injects into each chapter document and updates in place. Page margins are padding on `.reader__page`, a wrapper around the epub.js container - epub.js measures the container's border box, so padding on the container itself would be ignored.
+
+### Content Security Policy
+
+`vite.config.ts` injects a CSP meta tag into production builds only (the dev server needs inline script and a websocket for HMR). Book iframes are same-origin `srcdoc` documents and inherit it: no script outside the bundle, no requests to other origins. Anything new that loads a resource - a worker, a font, an inline script in `index.html` - has to fit the policy or extend it deliberately, and can only be checked against `npm run build` + `npm run preview`, not `npm run dev`.
 
 ### Error handling
 
