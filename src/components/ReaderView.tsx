@@ -23,6 +23,12 @@ const PANEL_TITLES: Record<PanelName, string> = {
   settings: 'Display Settings',
 };
 
+// Matches the phone breakpoint in App.css, where the contents list and side
+// panel become full-screen overlays.
+function isPhoneLayout(): boolean {
+  return window.matchMedia('(max-width: 640px)').matches;
+}
+
 export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewProps) {
   const { settings, theme, updateSettings } = useSettings();
   const reader = useEpubReader(data, settings, theme, fallbackTitle);
@@ -81,9 +87,18 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const handleSelectHref = useCallback(
     (href: string) => {
       reader.goToHref(href);
+      // On a phone the contents list covers the whole page: get out of the way.
+      if (isPhoneLayout()) updateSettings({ tocOpen: false });
     },
-    [reader],
+    [reader, updateSettings],
   );
+
+  // The contents list defaults to open, which on a phone would hide the book
+  // behind it as soon as one is opened.
+  useEffect(() => {
+    if (isPhoneLayout()) updateSettings({ tocOpen: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectCfi = useCallback(
     (cfi: string) => {

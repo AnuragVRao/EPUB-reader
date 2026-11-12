@@ -1178,3 +1178,138 @@ input[type='range'] {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* Touch and phone layout */
+
+/* Stops a page-turning swipe from also triggering the browser's
+   back/forward gesture or pull-to-refresh. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.btn,
+.icon-btn,
+.segmented__btn,
+.reader__nav-arrow,
+.toc-item {
+  /* No double-tap zoom, so taps register without the delay. */
+  touch-action: manipulation;
+}
+
+/* Finger-sized targets wherever the main pointer is a finger. */
+@media (pointer: coarse) {
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .segmented__btn {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+
+  .toc-item {
+    padding: 12px 8px;
+  }
+
+  .reader__nav-arrow {
+    width: 48px;
+    height: 48px;
+  }
+
+  .library-book__remove {
+    width: 40px;
+    height: 40px;
+  }
+
+  input[type='range'] {
+    min-height: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Title and progress on one row, the buttons spread across a second. */
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'titles progress'
+      'actions actions';
+    gap: 2px 8px;
+    padding: 6px 8px;
+  }
+
+  .toolbar__titles {
+    grid-area: titles;
+    align-items: flex-start;
+    text-align: left;
+    max-width: none;
+    padding-left: 8px;
+  }
+
+  /* There is room for the chapter again now the title has its own row. */
+  .toolbar__chapter {
+    display: block;
+  }
+
+  .toolbar__spacer {
+    grid-area: progress;
+    align-items: center;
+  }
+
+  .toolbar__actions {
+    grid-area: actions;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
+  .toolbar__actions .icon-btn {
+    flex: 0 1 44px;
+    width: auto;
+    min-width: 0;
+    height: 44px;
+  }
+
+  /* Arrows move to the bottom corners, off the text. Swiping turns pages too. */
+  .reader__nav-zone {
+    align-items: flex-end;
+    padding-bottom: 14px;
+  }
+
+  .reader__nav-arrow {
+    opacity: 0.45;
+  }
+
+  .selection-bar {
+    bottom: 12px;
+  }
+
+  .selection-bar--note {
+    width: calc(100% - 24px);
+  }
+
+  .app-banner {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    max-width: none;
+  }
+
+  .drop-zone {
+    padding: 16px;
+    gap: 24px;
+  }
+
+  .drop-zone__card {
+    padding: 36px 20px;
+  }
+
+  .library__grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+  }
+}

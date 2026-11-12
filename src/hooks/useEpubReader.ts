@@ -20,6 +20,7 @@ import { addBookToLibrary } from '../lib/db';
 import { prepareCover } from '../lib/cover';
 import { getHighlights, saveHighlights } from '../lib/db';
 import type { Highlight, TextSelection } from '../lib/types';
+import { swipeDirection, type TouchPoint } from '../lib/swipe';
 
 // Puts the open book on the shelf (or marks it as just opened) so it can be
 // reopened from the start screen without the file.
@@ -489,6 +490,29 @@ export function useEpubReader(
       });
     });
 
+    // Swipes land inside the book's iframe, so they are picked up through
+    // epub.js's relayed touch events, the same way keys are below.
+    let touchStart: TouchPoint | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      // A second finger means a pinch, not a swipe.
+      const touch = event.touches.length === 1 ? event.touches[0] : null;
+      touchStart = touch ? { x: touch.clientX, y: touch.clientY, time: Date.now() } : null;
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      const start = touchStart;
+      touchStart = null;
+      const touch = event.changedTouches[0];
+      // Scrolled mode uses horizontal drags for nothing, but a stray one
+      // jumping a whole chapter would be worse than doing nothing.
+      if (!start || !touch || settingsRef.current.flow !== 'paginated') return;
+      // Dragging a selection handle is not a page turn.
+      if (hasTextSelection(rendition)) return;
+      const direction = swipeDirection(start, { x: touch.clientX, y: touch.clientY, time: Date.now() });
+      if (direction) runPageAction(book, rendition, direction);
+    };
+    rendition.on('touchstart', onTouchStart);
+    rendition.on('touchend', onTouchEnd);
+
     const onRelocated = (location: Location) => {
       const cfi = location.start.cfi;
       currentCfiRef.current = cfi;
@@ -634,6 +658,8 @@ export function useEpubReader(
       rendition.off('relocated', onRelocated);
       rendition.off('keyup', onKeyUp);
       rendition.off('selected', onSelected);
+      rendition.off('touchstart', onTouchStart);
+      rendition.off('touchend', onTouchEnd);
       rendition.destroy();
       book.destroy();
       bookRef.current = null;
