@@ -36,7 +36,7 @@ jobs:
       # Vite's base is relative, so the build needs no knowledge of the
       # /<repository>/ path Pages serves it from.
       - run: npm run build
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
