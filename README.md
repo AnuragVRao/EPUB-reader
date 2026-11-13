@@ -5,7 +5,7 @@ A browser-based EPUB reader. Drag and drop an `.epub` file to start reading — 
 ## Features
 
 - Drag-and-drop or file-picker EPUB loading, parsed entirely in the browser
-- Light, dark, and sepia themes, or follow the system light/dark setting
+- Light, dark, and sepia themes, a custom theme with your own colours, or follow the system light/dark setting
 - Font size, font family, line spacing, paragraph spacing, page margins, justification and hyphenation controls
 - Paginated or scrolled reading modes, with one page or a two-page spread
 - Table of contents navigation
@@ -25,6 +25,9 @@ A browser-based EPUB reader. Drag and drop an `.epub` file to start reading — 
 - Click an illustration to view it full size
 - Touch support: swipe to turn pages, finger-sized controls, and a phone layout
 - Installable as an app and usable offline; once installed it can open `.epub` files directly (Chromium browsers)
+- Read aloud with the browser's own voices, sentence by sentence, with the current sentence marked and pages turned as it reads
+- Right-to-left books turn pages the way they read, and fixed-layout books (comics, picture books) keep the publisher's page design
+- Optional dictionary: select a word and choose Define to see its Wiktionary entry. Off by default; when on, only the looked-up word is sent to en.wiktionary.org — the one exception to everything staying in the browser
 
 ## Getting started
 
@@ -34,6 +37,15 @@ npm run dev
 ```
 
 Then open the printed local URL in your browser.
+
+## Tests
+
+```bash
+npm test           # unit tests (Vitest)
+npm run test:e2e   # end-to-end tests (Playwright) against the production build
+```
+
+The end-to-end tests build the site and drive it in Chromium. Run `npx playwright install chromium` once first, or set `PLAYWRIGHT_CHANNEL=chrome` to use an installed Chrome instead.
 
 ## Build
 

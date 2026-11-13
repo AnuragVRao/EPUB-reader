@@ -9,10 +9,15 @@ npm run dev      # Vite dev server
 npm run build    # tsc -b && vite build -> static site in dist/
 npm run lint     # oxlint
 npm run test     # vitest run (npm run test:watch for watch mode)
+npm run test:e2e # playwright test: builds, serves with vite preview, drives Chromium
 npm run preview  # serve the built dist/
 ```
 
-Tests (`src/**/*.test.ts`, Vitest in a plain Node environment) cover only the pure, DOM-free modules under `lib/`: `settings.ts` and `readingTime.ts` with a stubbed `localStorage`, `db.ts` on `fake-indexeddb` (including the v1 → v2 upgrade and shelf eviction), and the logic in `keys.ts`, `search.ts`, `typography.ts`, `backup.ts` and `swipe.ts`. New logic that doesn't need the DOM or epub.js belongs in a `lib/` module with a test, with the hook or component as a thin caller. Nothing exercises React components or epub.js, so `npm run build` (which type-checks the whole project) is still the main verification step for UI and reader changes — run it after non-trivial changes. CI (`.github/workflows/ci.yml`) runs an `npm audit`, lint, test and build on pushes to `main` and on pull requests. A separate workflow (`deploy.yml`) publishes `dist/` to GitHub Pages on pushes to `main`.
+Tests (`src/**/*.test.ts`, Vitest in a plain Node environment) cover only the pure, DOM-free modules under `lib/`: `settings.ts` and `readingTime.ts` with a stubbed `localStorage`, `db.ts` on `fake-indexeddb` (including the v1 → v2 upgrade and shelf eviction), and the logic in `keys.ts`, `search.ts`, `typography.ts`, `backup.ts`, `swipe.ts`, `customTheme.ts`, `speech.ts` and `dictionary.ts` (with `fetch` stubbed). New logic that doesn't need the DOM or epub.js belongs in a `lib/` module with a test, with the hook or component as a thin caller.
+
+End-to-end tests (`e2e/*.spec.ts`, Playwright) cover what unit tests can't: epub.js, React and the production build together. Fixture EPUBs - reflowable, right-to-left and fixed-layout - are built in memory by `e2e/fixtures.ts`; the shared `test` fixture starts every test on an empty origin. Speech and Wiktionary are replaced in the tests (`addInitScript`, `page.route`), so the suite never makes a network request or needs voices. Locally, `PLAYWRIGHT_CHANNEL=chrome` uses an installed Chrome. Run the e2e suite after any change to `useEpubReader`, `readAloud.ts` or the relayout logic; most past bugs there only showed up in a real browser.
+
+CI (`.github/workflows/ci.yml`) runs an `npm audit`, lint, unit tests and build, and in a separate job the e2e suite, on pushes to `main` and on pull requests. A separate workflow (`deploy.yml`) publishes `dist/` to GitHub Pages on pushes to `main`.
 
 Two lint warnings are pre-existing and expected (`SettingsContext.tsx` only-export-components, `useEpubReader.ts` exhaustive-deps). Don't treat them as regressions.
 
@@ -50,6 +55,16 @@ Several non-obvious constraints are already encoded here — preserve them when 
 - **Highlights go through `rendition.annotations`,** which redraws them on every section render. `eraseAnnotation` (used for highlights and the search mark) also unlinks the entry from epub.js's per-section index by hand: `annotations.remove()` only does that while looping over rendered views, and a stale entry makes the next render of that section throw.
 - **A book is put on the shelf only after its first page has rendered** (`shelveBook`), so a broken EPUB never gets there. The cover is read straight from the archive rather than through `book.coverUrl()`.
 
+### Read aloud (`hooks/readAloud.ts`)
+
+`ReadAloudSession` is the second file allowed to talk to epub.js. It reads a chapter's text with `lib/speechText.ts` (blocks end sentences; footnotes and noterefs are skipped), splits it with `Intl.Segmenter` via `lib/speech.ts`, and speaks one `SpeechSynthesisUtterance` per sentence, marking each as an `underline` annotation. Every async step checks a token that stop/pause/resume bump, so a stale `onend` or page turn can never act. Pause is cancel-and-remember rather than `speechSynthesis.pause()`, which is unreliable across browsers.
+
+It turns pages itself, and must tell those turns apart from the reader's: it records the destination of its own `display()` and treats a `relocated` that arrives anywhere else (and isn't a relayout) as the reader moving, which stops reading. Don't replace that with a time window - a jump landing inside the window was silently undone.
+
+### Right-to-left books
+
+epub.js lays out RTL books itself from the spine's `page-progression-direction` (read via a cast; its typings omit `metadata.direction`). The app mirrors its own controls: `pageKeyAction(event, flow, rtl)` and `swipeDirection(start, end, rtl)` swap directions, the left page-edge button turns forward, and the progress bar fills from the right.
+
 ### Persistence — two layers, deliberately split
 
 - **`localStorage`** (`lib/settings.ts`): `ReaderSettings` only. Small, synchronous, needed during the first render.
@@ -72,13 +87,17 @@ Book content renders inside epub.js iframes, which app CSS cannot reach. So them
 
 Adding a theme means touching both, and checking its text colours for WCAG AA contrast (4.5:1) on `--surface`, `--surface-alt` and `--bg`. `--page-bg` in `index.css` mirrors the book page colour in `epubThemes.ts` and must change with it. `.epub-container` is one exception — epub.js renders it outside the iframe, so it is styled from `App.css`. Highlights are another: epub.js draws them in an SVG laid over the iframe, in the app document, so their per-theme colour and blend mode are the `--highlight*` variables in `App.css`.
 
+The `custom` theme has no fixed colours: `lib/customTheme.ts` derives the whole palette from the three colours in `settings.customColors`, pushing derived text colours to AA contrast. `SettingsContext` sets those as inline custom properties on `<html>`, and `registerCustomTheme` re-registers the epub.js theme on each change - after removing the old stylesheet, since epub.js appends re-registered rules rather than replacing them.
+
+Fixed-layout (pre-paginated) books get no theme or text settings at all - `applyThemeAndFonts` returns early - because their pages are designed like print. That is why theme and text settings are first applied after `book.ready` (epub.js applies overrides to every page rendered afterwards, so applying them before the layout is known would reach a fixed-layout book). epub.js also makes a fixed-layout page's body transparent while scaling it; the content hook moves the publisher's background colour to `<html>`.
+
 The stored `settings.theme` is a `ThemeSetting` and may be `'auto'`. `SettingsContext` resolves it against `prefers-color-scheme` and exposes the result as `theme` (a `ThemeName`); that resolved value is what goes to `data-theme` and to `applyThemeAndFonts`. epub.js has no theme registered under `'auto'`, so never pass `settings.theme` to it directly.
 
 Typography settings that need rules on elements other than `body` (paragraph spacing, hyphenation) can't go through `rendition.themes.override`, which only targets `body`. `lib/typography.ts` builds a stylesheet that `epubThemes.ts` injects into each chapter document and updates in place. Page margins are padding on `.reader__page`, a wrapper around the epub.js container - epub.js measures the container's border box, so padding on the container itself would be ignored.
 
 ### Content Security Policy
 
-`vite.config.ts` injects a CSP meta tag into production builds only (the dev server needs inline script and a websocket for HMR). Book iframes are same-origin `srcdoc` documents and inherit it: no script outside the bundle, no requests to other origins. Anything new that loads a resource - a worker, a font, an inline script in `index.html` - has to fit the policy or extend it deliberately, and can only be checked against `npm run build` + `npm run preview`, not `npm run dev`.
+`vite.config.ts` injects a CSP meta tag into production builds only (the dev server needs inline script and a websocket for HMR). Book iframes are same-origin `srcdoc` documents and inherit it: no script outside the bundle, no requests to other origins - except `connect-src` for the opt-in dictionary's origin, imported from `lib/dictionary.ts` so the two can't drift apart. That lookup is the app's only network request: off by default (`settings.dictionaryEnabled`), it sends only the looked-up word, with no cookies or referrer, and responses are rendered as text, never HTML. Anything new that loads a resource - a worker, a font, an inline script in `index.html` - has to fit the policy or extend it deliberately, and can only be checked against `npm run build` + `npm run preview`, not `npm run dev`.
 
 ### Error handling
 
