@@ -30,14 +30,15 @@ function targetMatches(target: EventTarget | null | undefined, selector: string)
  * Maps a key press to a page-turn action, or null when the key should be left
  * alone. Arrows work in both flows. Space, PageUp/PageDown and Home/End only
  * act in paginated flow - in scrolled flow they keep their native scrolling.
+ * In a right-to-left book the next page is to the left, so the arrows swap.
  */
-export function pageKeyAction(event: PageKeyEvent, flow: FlowMode): PageKeyAction | null {
+export function pageKeyAction(event: PageKeyEvent, flow: FlowMode, rtl = false): PageKeyAction | null {
   // Leave browser shortcuts (Alt+Left = back, Ctrl+Home, ...) alone.
   if (event.ctrlKey || event.altKey || event.metaKey) return null;
   if (targetMatches(event.target, KEY_CONSUMERS)) return null;
 
-  if (event.key === 'ArrowLeft') return 'prev';
-  if (event.key === 'ArrowRight') return 'next';
+  if (event.key === 'ArrowLeft') return rtl ? 'next' : 'prev';
+  if (event.key === 'ArrowRight') return rtl ? 'prev' : 'next';
   if (flow !== 'paginated') return null;
 
   switch (event.key) {

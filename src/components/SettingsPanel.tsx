@@ -18,6 +18,8 @@ interface SettingsPanelProps {
   onImportData: (raw: unknown) => Promise<ImportSummary>;
   /** The open book's language, for suggesting read-aloud voices. */
   bookLanguage: string;
+  /** A fixed-layout book ignores the theme and text settings. */
+  fixedLayout?: boolean;
 }
 
 const THEMES: { value: ThemeSetting; label: string }[] = [
@@ -54,9 +56,16 @@ export default function SettingsPanel({
   onExportData,
   onImportData,
   bookLanguage,
+  fixedLayout = false,
 }: SettingsPanelProps) {
   return (
     <div className="settings-panel">
+      {fixedLayout && (
+        <p className="settings-panel__note" role="note">
+          This book has a fixed layout: its pages keep the publisher's design, so theme colours and text settings
+          don't change them.
+        </p>
+      )}
       <section className="settings-section">
         <h3>Theme</h3>
         <div className="segmented">

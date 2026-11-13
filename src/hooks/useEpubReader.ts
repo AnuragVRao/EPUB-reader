@@ -267,7 +267,10 @@ function runPageAction(book: Book, rendition: Rendition, action: PageKeyAction):
     case 'end': {
       // The location index knows the book's last position; without it, the
       // start of the last section is the closest available target.
-      const target = book.locations.length() ? book.locations.cfiFromPercentage(1) : book.spine.last()?.href;
+      // `length()` is non-zero while the index is still being generated, but
+      // until it is done every percentage resolves to the first location.
+      const indexed = (book.locations as unknown as { total: number }).total > 0;
+      const target = indexed ? book.locations.cfiFromPercentage(1) : book.spine.last()?.href;
       if (target) rendition.display(target).catch(() => {});
       return;
     }
@@ -554,6 +557,10 @@ export interface EpubReaderApi {
   dismissZoom: () => void;
   /** The book's declared language (BCP 47 tag), or ''. */
   language: string;
+  /** Page progression: 'rtl' turns pages leftwards, so controls are mirrored. */
+  direction: 'ltr' | 'rtl';
+  /** True for a fixed-layout book, whose pages are left as designed. */
+  fixedLayout: boolean;
   readAloud: {
     /** False when the browser has no speech synthesis. */
     available: boolean;
@@ -622,6 +629,9 @@ export function useEpubReader(
   const [currentPage, setCurrentPage] = useState({ start: '', end: '' });
   const [percentage, setPercentage] = useState<number | null>(null);
   const [language, setLanguage] = useState('');
+  const [direction, setDirection] = useState<'ltr' | 'rtl'>('ltr');
+  const [fixedLayout, setFixedLayout] = useState(false);
+  const fixedLayoutRef = useRef(false);
   const [readAloudStatus, setReadAloudStatus] = useState<ReadAloudStatus>('idle');
   const readAloudRef = useRef<ReadAloudSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
@@ -657,6 +667,9 @@ export function useEpubReader(
     setCurrentTocHref('');
     setPercentage(null);
     setTimeLeft(null);
+    setDirection('ltr');
+    setFixedLayout(false);
+    fixedLayoutRef.current = false;
     setPageInfo(null);
 
     const speed = new ReadingSpeed(loadReadingSpeed());
@@ -691,12 +704,18 @@ export function useEpubReader(
       spread: settingsRef.current.spread === 'single' ? 'none' : 'auto',
     });
     renditionRef.current = rendition;
-    registerThemes(
-      rendition,
-      () => settingsRef.current,
-      () => book.packaging?.metadata?.language ?? '',
-    );
-    applyThemeAndFonts(rendition, settingsRef.current, themeRef.current);
+    const isFixedLayout = () => book.packaging?.metadata?.layout === 'pre-paginated';
+    // epub.js reads the spine's page-progression-direction into the metadata
+    // but its typings don't declare the field.
+    const isRtl = () =>
+      (book.packaging?.metadata as unknown as { direction?: string } | undefined)?.direction === 'rtl';
+    registerThemes(rendition, () => settingsRef.current, {
+      language: () => book.packaging?.metadata?.language ?? '',
+      fixedLayout: isFixedLayout,
+    });
+    // Theme and text settings are applied once the book's metadata is known
+    // (below): epub.js applies them to every page it renders afterwards, and
+    // a fixed-layout book must not get them at all.
 
     const readAloud = new ReadAloudSession(rendition, book, {
       language: () => book.packaging?.metadata?.language ?? '',
@@ -805,7 +824,7 @@ export function useEpubReader(
       if (!start || !touch || settingsRef.current.flow !== 'paginated') return;
       // Dragging a selection handle is not a page turn.
       if (hasTextSelection(rendition)) return;
-      const direction = swipeDirection(start, { x: touch.clientX, y: touch.clientY, time: Date.now() });
+      const direction = swipeDirection(start, { x: touch.clientX, y: touch.clientY, time: Date.now() }, isRtl());
       if (direction) runPageAction(book, rendition, direction);
     };
     rendition.on('touchstart', onTouchStart);
@@ -867,7 +886,7 @@ export function useEpubReader(
         setNote(null);
         setZoomedImage(null);
       }
-      const action = pageKeyAction(event, settingsRef.current.flow);
+      const action = pageKeyAction(event, settingsRef.current.flow, isRtl());
       if (action) runPageAction(book, rendition, action);
     };
     rendition.on('keyup', onKeyUp);
@@ -919,6 +938,10 @@ export function useEpubReader(
         const metadata = book.packaging.metadata;
         setTitle(metadata.title || 'Untitled');
         setLanguage(metadata.language || '');
+        setDirection(isRtl() ? 'rtl' : 'ltr');
+        setFixedLayout(isFixedLayout());
+        fixedLayoutRef.current = isFixedLayout();
+        applyThemeAndFonts(rendition, settingsRef.current, themeRef.current, fixedLayoutRef.current);
         setAuthor(metadata.creator || 'Unknown author');
         setToc(toTocItems(book.navigation.toc));
 
@@ -1005,16 +1028,15 @@ export function useEpubReader(
   useEffect(() => {
     const rendition = renditionRef.current;
     if (!rendition) return;
-    if (!bookIdRef.current) {
-      applyThemeAndFonts(rendition, settings, theme);
-      return;
-    }
+    // Until the book is ready, the opening code applies the current settings
+    // itself (it reads them through refs).
+    if (!bookIdRef.current || fixedLayoutRef.current) return;
     // Font/size/spacing changes reflow the text, and epub.js keeps the old
     // pixel offset - landing on different text. Queue it like a resize so it
     // can't race one, and return to the anchored position afterwards.
     enqueueRelayout(relayoutChainRef, relayoutActiveRef, rendition, async () => {
       const reflowed = nextRelocated(rendition);
-      applyThemeAndFonts(rendition, settings, theme);
+      applyThemeAndFonts(rendition, settings, theme, fixedLayoutRef.current);
       await reflowed;
       const anchor = anchorCfiRef.current;
       if (anchor && bookIdRef.current) await displayAndSettle(rendition, anchor);
@@ -1035,7 +1057,7 @@ export function useEpubReader(
   const { background, text, accent } = settings.customColors;
   useEffect(() => {
     const rendition = renditionRef.current;
-    if (!rendition || themeRef.current !== 'custom') return;
+    if (!rendition || themeRef.current !== 'custom' || fixedLayoutRef.current) return;
     registerCustomTheme(rendition, { background, text, accent });
     rendition.themes.select('custom');
   }, [background, text, accent]);
@@ -1436,6 +1458,8 @@ export function useEpubReader(
     zoomedImage,
     dismissZoom,
     language,
+    direction,
+    fixedLayout,
     readAloud,
   };
 }

@@ -69,7 +69,14 @@ function setTypographyCss(doc: Document | undefined, css: string): void {
  * book's declared language, used for documents that don't declare their own -
  * browsers only hyphenate text whose language they know.
  */
-export function registerThemes(rendition: Rendition, getSettings: () => ReaderSettings, language?: () => string): void {
+export interface ThemeContext {
+  /** The book's declared language, for documents that don't declare their own. */
+  language: () => string;
+  /** True for a fixed-layout (pre-paginated) book. */
+  fixedLayout: () => boolean;
+}
+
+export function registerThemes(rendition: Rendition, getSettings: () => ReaderSettings, context: ThemeContext): void {
   const fontCss = dyslexicFontFaceCss();
   rendition.hooks.content.register((contents: { document: Document }) => {
     const doc = contents.document;
@@ -81,7 +88,23 @@ export function registerThemes(rendition: Rendition, getSettings: () => ReaderSe
       doc.head.appendChild(style);
     }
     const root = doc.documentElement;
-    const lang = language?.();
+    if (context.fixedLayout()) {
+      // When it scales a fixed-layout page to fit, epub.js sets the page
+      // body's background to transparent (inline, before this hook runs), so
+      // the publisher's page colour would vanish and the reader's own page
+      // colour show through. Read the book's colour from under that override
+      // and put it on <html>, which epub.js leaves alone.
+      const body = doc.body;
+      const inline = body.style.getPropertyValue('background-color');
+      body.style.removeProperty('background-color');
+      const background = doc.defaultView?.getComputedStyle(body).backgroundColor;
+      if (inline) body.style.setProperty('background-color', inline);
+      if (background && background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent') {
+        root.style.backgroundColor = background;
+      }
+      return;
+    }
+    const lang = context.language();
     if (lang && !root.getAttribute('lang') && !root.getAttribute('xml:lang')) root.setAttribute('lang', lang);
     setTypographyCss(doc, typographyCss(getSettings()));
   });
@@ -124,7 +147,17 @@ export function registerCustomTheme(rendition: Rendition, colors: CustomColors):
 
 // `theme` is the resolved theme - `settings.theme` may be 'auto', which
 // epub.js has no registered theme for.
-export function applyThemeAndFonts(rendition: Rendition, settings: ReaderSettings, theme: ThemeName): void {
+//
+// A fixed-layout book is left exactly as designed: its pages are laid out
+// like printed pages, and reader colours, fonts or line spacing would break
+// them. Only reflowable books get the theme and text settings.
+export function applyThemeAndFonts(
+  rendition: Rendition,
+  settings: ReaderSettings,
+  theme: ThemeName,
+  fixedLayout = false,
+): void {
+  if (fixedLayout) return;
   if (theme === 'custom') registerCustomTheme(rendition, settings.customColors);
   rendition.themes.select(theme);
   rendition.themes.fontSize(`${settings.fontSize}%`);

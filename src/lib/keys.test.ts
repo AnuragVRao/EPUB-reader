@@ -66,4 +66,13 @@ describe('pageKeyAction', () => {
     expect(pageKeyAction({ key: 'ArrowRight', target: null }, 'paginated')).toBe('next');
     expect(pageKeyAction({ key: 'ArrowRight', target: {} as EventTarget }, 'paginated')).toBe('next');
   });
+
+  it('swaps the arrows for right-to-left books, leaving the other keys alone', () => {
+    expect(pageKeyAction({ key: 'ArrowLeft' }, 'paginated', true)).toBe('next');
+    expect(pageKeyAction({ key: 'ArrowRight' }, 'paginated', true)).toBe('prev');
+    expect(pageKeyAction({ key: 'ArrowLeft' }, 'scrolled', true)).toBe('next');
+    expect(pageKeyAction({ key: 'PageDown' }, 'paginated', true)).toBe('next');
+    expect(pageKeyAction({ key: ' ' }, 'paginated', true)).toBe('next');
+    expect(pageKeyAction({ key: 'Home' }, 'paginated', true)).toBe('start');
+  });
 });

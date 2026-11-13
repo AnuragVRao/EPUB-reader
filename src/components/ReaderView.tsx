@@ -39,6 +39,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const [activePanel, setActivePanel] = useState<PanelName | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const rtl = reader.direction === 'rtl';
   const percentLabel = reader.percentage === null ? '' : `${Math.round(reader.percentage * 100)}%`;
 
   const timeLeftLabel = reader.timeLeft ? `${formatDuration(reader.timeLeft.chapter)} left in chapter` : '';
@@ -72,13 +73,13 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         return;
       }
       // pageKeyAction ignores keys aimed at text fields, sliders and buttons.
-      const action = pageKeyAction(event, settings.flow);
+      const action = pageKeyAction(event, settings.flow, reader.direction === 'rtl');
       if (action) reader.turn(action);
     };
     window.addEventListener('keyup', onKeyUp);
     return () => window.removeEventListener('keyup', onKeyUp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reader.turn, settings.flow]);
+  }, [reader.turn, settings.flow, reader.direction]);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -184,11 +185,13 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
 
         <div className="reader__viewport">
           <div className="reader__nav-zone reader__nav-zone--prev">
+            {/* The left edge goes back in a left-to-right book and forward in a
+                right-to-left one, as turning a paper page would. */}
             <button
               type="button"
               className="reader__nav-arrow"
-              aria-label="Previous page"
-              onClick={() => reader.prev()}
+              aria-label={rtl ? 'Next page' : 'Previous page'}
+              onClick={() => (rtl ? reader.next() : reader.prev())}
             >
               <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
                 <path
@@ -210,8 +213,8 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
             <button
               type="button"
               className="reader__nav-arrow"
-              aria-label="Next page"
-              onClick={() => reader.next()}
+              aria-label={rtl ? 'Previous page' : 'Next page'}
+              onClick={() => (rtl ? reader.prev() : reader.next())}
             >
               <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
                 <path
@@ -227,7 +230,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
 
           {reader.percentage !== null && (
             <div
-              className="reader__progress"
+              className={`reader__progress ${rtl ? 'reader__progress--rtl' : ''}`}
               role="progressbar"
               aria-label="Reading progress"
               aria-valuemin={0}
@@ -306,6 +309,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onExportData={reader.exportData}
                 onImportData={reader.importData}
                 bookLanguage={reader.language}
+                fixedLayout={reader.fixedLayout}
                 onRemoveSavedBook={reader.removeSavedBook}
               />
             )}

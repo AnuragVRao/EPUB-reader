@@ -1575,3 +1575,18 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
+
+/* Right-to-left books: progress grows from the right */
+
+.reader__progress--rtl .reader__progress-fill {
+  margin-left: auto;
+}
+
+.settings-panel__note {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
