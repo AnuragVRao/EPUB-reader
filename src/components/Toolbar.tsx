@@ -17,6 +17,8 @@ interface ToolbarProps {
   timeLeftLabel: string;
   /** Longer form for the tooltip, e.g. "About 3 h left in the book". */
   timeLeftDetail: string;
+  /** Omitted when the browser can't read aloud. */
+  readAloud?: { active: boolean; onToggle: () => void };
   onClose: () => void;
 }
 
@@ -34,6 +36,7 @@ export default function Toolbar({
   progressLabel,
   timeLeftLabel,
   timeLeftDetail,
+  readAloud,
   onClose,
 }: ToolbarProps) {
   return (
@@ -64,6 +67,15 @@ export default function Toolbar({
         >
           <ListIcon />
         </ToolbarButton>
+        {readAloud && (
+          <ToolbarButton
+            active={readAloud.active}
+            onClick={readAloud.onToggle}
+            label={readAloud.active ? 'Stop reading aloud' : 'Read aloud'}
+          >
+            <SpeakerIcon />
+          </ToolbarButton>
+        )}
         <ToolbarButton active={activePanel === 'settings'} onClick={() => onTogglePanel('settings')} label="Display settings">
           <SettingsIcon />
         </ToolbarButton>
@@ -184,6 +196,20 @@ function SettingsIcon() {
         d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.8 6.2l-1.55 1.55M7.75 16.25 6.2 17.8M17.8 17.8l-1.55-1.55M7.75 7.75 6.2 6.2"
         stroke="currentColor"
         strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path
+        d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"
+        stroke="currentColor"
+        strokeWidth="1.7"
         strokeLinecap="round"
       />
     </svg>

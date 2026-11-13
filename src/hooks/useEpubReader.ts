@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ePub, { EpubCFI } from 'epubjs';
 import type { Book, Contents, Rendition, Location, NavItem } from 'epubjs';
 import { applyThemeAndFonts, registerCustomTheme, registerThemes } from '../lib/epubThemes';
+import { ReadAloudSession, readAloudAvailable, type ReadAloudStatus } from './readAloud';
 import {
   clearOtherBooksData,
   deleteBookData,
@@ -551,6 +552,18 @@ export interface EpubReaderApi {
   /** The illustration that was just clicked, to show full size, or null. */
   zoomedImage: BookImage | null;
   dismissZoom: () => void;
+  /** The book's declared language (BCP 47 tag), or ''. */
+  language: string;
+  readAloud: {
+    /** False when the browser has no speech synthesis. */
+    available: boolean;
+    status: ReadAloudStatus;
+    /** Starts reading at the current position. */
+    start: () => void;
+    pause: () => void;
+    resume: () => void;
+    stop: () => void;
+  };
 }
 
 export function useEpubReader(
@@ -608,6 +621,9 @@ export function useEpubReader(
   // The CFIs at the start and end of what is on screen.
   const [currentPage, setCurrentPage] = useState({ start: '', end: '' });
   const [percentage, setPercentage] = useState<number | null>(null);
+  const [language, setLanguage] = useState('');
+  const [readAloudStatus, setReadAloudStatus] = useState<ReadAloudStatus>('idle');
+  const readAloudRef = useRef<ReadAloudSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const bookmarksRef = useRef<Bookmark[]>([]);
@@ -681,6 +697,17 @@ export function useEpubReader(
       () => book.packaging?.metadata?.language ?? '',
     );
     applyThemeAndFonts(rendition, settingsRef.current, themeRef.current);
+
+    const readAloud = new ReadAloudSession(rendition, book, {
+      language: () => book.packaging?.metadata?.language ?? '',
+      rate: () => settingsRef.current.speechRate,
+      voiceUri: () => settingsRef.current.speechVoice,
+      onStatus: (status) => {
+        if (!cancelled) setReadAloudStatus(status);
+      },
+      erase: (cfiRange, type) => eraseAnnotation(rendition, cfiRange, type),
+    });
+    readAloudRef.current = readAloud;
 
     // Drag events over the book stay inside its iframe. Tell the app when a
     // file is dragged in so it can raise its drop overlay, and stop the
@@ -803,6 +830,7 @@ export function useEpubReader(
         pendingAnchorRef.current = '';
       }
       setCurrentPage({ start: cfi, end: location.end.cfi });
+      readAloud.onRelocated(location, relayoutActiveRef.current || resizePendingRef.current);
       setCurrentHref(location.start.href);
       // Report and persist the anchored position rather than this page's
       // start: the anchor is on screen either way, but it doesn't shift with
@@ -890,6 +918,7 @@ export function useEpubReader(
         bookIdRef.current = bookId;
         const metadata = book.packaging.metadata;
         setTitle(metadata.title || 'Untitled');
+        setLanguage(metadata.language || '');
         setAuthor(metadata.creator || 'Unknown author');
         setToc(toTocItems(book.navigation.toc));
 
@@ -957,6 +986,8 @@ export function useEpubReader(
       rendition.off('selected', onSelected);
       rendition.off('touchstart', onTouchStart);
       rendition.off('touchend', onTouchEnd);
+      readAloud.stop();
+      readAloudRef.current = null;
       rendition.destroy();
       book.destroy();
       bookRef.current = null;
@@ -1348,6 +1379,18 @@ export function useEpubReader(
   const dismissNote = useCallback(() => setNote(null), []);
   const dismissZoom = useCallback(() => setZoomedImage(null), []);
 
+  const readAloud = useMemo(
+    () => ({
+      available: readAloudAvailable(),
+      status: readAloudStatus,
+      start: () => void readAloudRef.current?.start(anchorCfiRef.current || currentCfiRef.current),
+      pause: () => readAloudRef.current?.pause(),
+      resume: () => void readAloudRef.current?.resume(),
+      stop: () => readAloudRef.current?.stop(),
+    }),
+    [readAloudStatus],
+  );
+
   const isCurrentBookmarked = bookmarks.some((b) => isInRange(b.cfi, currentPage.start, currentPage.end));
 
   return {
@@ -1392,5 +1435,7 @@ export function useEpubReader(
     dismissNote,
     zoomedImage,
     dismissZoom,
+    language,
+    readAloud,
   };
 }

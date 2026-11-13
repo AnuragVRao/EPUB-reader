@@ -1524,3 +1524,54 @@ body {
   padding: 6px 12px;
   font-size: 0.85rem;
 }
+
+/* Read aloud */
+
+.read-aloud-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px var(--shadow);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.read-aloud-bar__label {
+  margin-right: 6px;
+}
+
+.read-aloud-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.read-aloud-settings__row {
+  display: grid;
+  grid-template-columns: 4.5em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.read-aloud-settings__row select {
+  grid-column: 2 / 4;
+  padding: 6px 8px;
+}
+
+.read-aloud-settings__value {
+  min-width: 3.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}

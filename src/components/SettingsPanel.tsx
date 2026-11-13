@@ -4,6 +4,8 @@ import type { BackupFile } from '../lib/backup';
 import type { ImportSummary } from '../lib/db';
 import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode, SpreadMode } from '../lib/types';
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from '../lib/typography';
+import { readAloudAvailable } from '../hooks/readAloud';
+import { MAX_SPEECH_RATE, MIN_SPEECH_RATE } from '../lib/speech';
 import { DEFAULT_CUSTOM_COLORS, MIN_CONTRAST, contrastRatio, type CustomColors } from '../lib/customTheme';
 
 interface SettingsPanelProps {
@@ -14,6 +16,8 @@ interface SettingsPanelProps {
   onRemoveSavedBook: (bookId: string) => Promise<void>;
   onExportData: () => Promise<BackupFile>;
   onImportData: (raw: unknown) => Promise<ImportSummary>;
+  /** The open book's language, for suggesting read-aloud voices. */
+  bookLanguage: string;
 }
 
 const THEMES: { value: ThemeSetting; label: string }[] = [
@@ -49,6 +53,7 @@ export default function SettingsPanel({
   onRemoveSavedBook,
   onExportData,
   onImportData,
+  bookLanguage,
 }: SettingsPanelProps) {
   return (
     <div className="settings-panel">
@@ -172,6 +177,18 @@ export default function SettingsPanel({
         </label>
       </section>
 
+      {readAloudAvailable() && (
+        <section className="settings-section">
+          <h3>Read aloud</h3>
+          <ReadAloudSettings
+            rate={settings.speechRate}
+            voice={settings.speechVoice}
+            bookLanguage={bookLanguage}
+            onChange={onChange}
+          />
+        </section>
+      )}
+
       <section className="settings-section">
         <h3>Reading mode</h3>
         <div className="segmented">
@@ -216,6 +233,75 @@ export default function SettingsPanel({
           onImport={onImportData}
         />
       </section>
+    </div>
+  );
+}
+
+// The browser fills its voice list asynchronously (and Chrome only after the
+// first call), so listen for it to change.
+function useVoices(): SpeechSynthesisVoice[] {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => speechSynthesis.getVoices());
+  useEffect(() => {
+    const update = () => setVoices(speechSynthesis.getVoices());
+    speechSynthesis.addEventListener('voiceschanged', update);
+    update();
+    return () => speechSynthesis.removeEventListener('voiceschanged', update);
+  }, []);
+  return voices;
+}
+
+function ReadAloudSettings({
+  rate,
+  voice,
+  bookLanguage,
+  onChange,
+}: {
+  rate: number;
+  voice: string;
+  bookLanguage: string;
+  onChange: (patch: Partial<ReaderSettings>) => void;
+}) {
+  const voices = useVoices();
+  const base = bookLanguage.toLowerCase().split(/[-_]/)[0];
+  // Voices for the book's language first, then the rest, each alphabetically.
+  const sorted = [...voices].sort((a, b) => {
+    const am = Number(a.lang.toLowerCase().startsWith(base));
+    const bm = Number(b.lang.toLowerCase().startsWith(base));
+    return bm - am || a.name.localeCompare(b.name);
+  });
+
+  return (
+    <div className="read-aloud-settings">
+      <label className="read-aloud-settings__row">
+        <span>Speed</span>
+        <input
+          type="range"
+          min={MIN_SPEECH_RATE}
+          max={MAX_SPEECH_RATE}
+          step={0.1}
+          value={rate}
+          aria-label="Read-aloud speed"
+          onChange={(e) => onChange({ speechRate: Number(e.target.value) })}
+        />
+        <span className="read-aloud-settings__value">{rate.toFixed(1)}×</span>
+      </label>
+      <label className="read-aloud-settings__row">
+        <span>Voice</span>
+        <select
+          className="text-input"
+          value={voices.some((v) => v.voiceURI === voice) ? voice : ''}
+          aria-label="Read-aloud voice"
+          onChange={(e) => onChange({ speechVoice: e.target.value })}
+        >
+          <option value="">{bookLanguage ? `Default for this book (${bookLanguage})` : 'Browser default'}</option>
+          {sorted.map((v) => (
+            <option key={v.voiceURI} value={v.voiceURI}>
+              {v.name} ({v.lang}){v.localService ? '' : ' - online'}
+            </option>
+          ))}
+        </select>
+      </label>
+      {voices.length === 0 && <p className="clear-data__hint">This browser has not offered any voices yet.</p>}
     </div>
   );
 }

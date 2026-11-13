@@ -67,6 +67,13 @@ describe('loadSettings', () => {
     });
   });
 
+  it('validates the read-aloud settings', () => {
+    items.set(SETTINGS_KEY, JSON.stringify({ speechRate: 1.5, speechVoice: 'Google UK English Female' }));
+    expect(loadSettings()).toMatchObject({ speechRate: 1.5, speechVoice: 'Google UK English Female' });
+    items.set(SETTINGS_KEY, JSON.stringify({ speechRate: 9, speechVoice: 42 }));
+    expect(loadSettings()).toMatchObject({ speechRate: 2, speechVoice: '' });
+  });
+
   it('validates the typography and layout settings', () => {
     items.set(
       SETTINGS_KEY,

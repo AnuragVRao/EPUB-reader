@@ -1,6 +1,7 @@
 import type { FlowMode, FontFamily, ReaderSettings, SpreadMode, ThemeName, ThemeSetting } from './types';
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from './typography';
 import { DEFAULT_CUSTOM_COLORS, sanitizeCustomColors } from './customTheme';
+import { MAX_SPEECH_RATE, MIN_SPEECH_RATE } from './speech';
 
 const SETTINGS_KEY = 'epub-reader-settings';
 
@@ -16,6 +17,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   pageMargin: 0,
   spread: 'auto',
   customColors: DEFAULT_CUSTOM_COLORS,
+  speechRate: 1,
+  speechVoice: '',
   tocOpen: true,
   tocWidth: 300,
 };
@@ -58,6 +61,8 @@ function sanitize(raw: unknown): ReaderSettings {
     pageMargin: numberIn(s.pageMargin, 0, MAX_PAGE_MARGIN, d.pageMargin),
     spread: oneOf(s.spread, SPREADS, d.spread),
     customColors: sanitizeCustomColors(s.customColors),
+    speechRate: numberIn(s.speechRate, MIN_SPEECH_RATE, MAX_SPEECH_RATE, d.speechRate),
+    speechVoice: typeof s.speechVoice === 'string' ? s.speechVoice.slice(0, 500) : d.speechVoice,
     tocOpen: bool(s.tocOpen, d.tocOpen),
     tocWidth: numberIn(s.tocWidth, 200, 520, d.tocWidth),
   };

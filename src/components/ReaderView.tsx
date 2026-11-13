@@ -13,6 +13,7 @@ import HighlightsPanel from './HighlightsPanel';
 import SelectionBar from './SelectionBar';
 import NotePopup from './NotePopup';
 import ImageZoom from './ImageZoom';
+import ReadAloudBar from './ReadAloudBar';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -153,6 +154,14 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
         progressLabel={percentLabel}
         timeLeftLabel={timeLeftLabel}
         timeLeftDetail={timeLeftDetail}
+        readAloud={
+          reader.readAloud.available
+            ? {
+                active: reader.readAloud.status !== 'idle',
+                onToggle: reader.readAloud.status === 'idle' ? reader.readAloud.start : reader.readAloud.stop,
+              }
+            : undefined
+        }
         onClose={onClose}
       />
 
@@ -236,6 +245,14 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
           />
           {reader.note && <NotePopup note={reader.note} onClose={reader.dismissNote} onGoTo={reader.goToHref} />}
           {reader.zoomedImage && <ImageZoom image={reader.zoomedImage} onClose={reader.dismissZoom} />}
+          {reader.readAloud.status !== 'idle' && (
+            <ReadAloudBar
+              paused={reader.readAloud.status === 'paused'}
+              onPause={reader.readAloud.pause}
+              onResume={reader.readAloud.resume}
+              onStop={reader.readAloud.stop}
+            />
+          )}
 
           {reader.loading && (
             <div className="reader__overlay">
@@ -288,6 +305,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
                 onListSavedBooks={reader.listSavedBooks}
                 onExportData={reader.exportData}
                 onImportData={reader.importData}
+                bookLanguage={reader.language}
                 onRemoveSavedBook={reader.removeSavedBook}
               />
             )}

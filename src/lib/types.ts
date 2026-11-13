@@ -24,6 +24,10 @@ export interface ReaderSettings {
   spread: SpreadMode;
   /** Colours for the 'custom' theme; kept when another theme is chosen. */
   customColors: CustomColors;
+  /** Read-aloud speed; 1 is the voice's normal rate. */
+  speechRate: number;
+  /** `voiceURI` of the chosen read-aloud voice, or '' to match the book's language. */
+  speechVoice: string;
   tocOpen: boolean;
   tocWidth: number;
 }
