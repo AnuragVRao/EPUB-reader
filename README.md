@@ -66,6 +66,10 @@ Outputs a static site to `dist/`, which can be hosted on any static file host. A
 - IndexedDB (via `idb`) for storing the shelf of books, bookmarks, highlights, and reading progress
 - A small hand-written service worker for offline use (no PWA dependency)
 
+## Releases
+
+Changes are listed in [CHANGELOG.md](CHANGELOG.md). Pushing a version tag (`v1.2.3`) that matches `package.json` and has a section in the changelog publishes a GitHub Release with those notes and the built site as a zip (`.github/workflows/release.yml`).
+
 ## Roadmap
 
 Planned and possible work is tracked in [FUTURE_SCOPE.md](FUTURE_SCOPE.md).
