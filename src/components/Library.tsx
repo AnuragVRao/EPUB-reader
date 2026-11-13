@@ -36,6 +36,9 @@ export default function Library({ onOpen }: LibraryProps) {
     for (const book of books) {
       if (book.cover) urls[book.bookId] = URL.createObjectURL(new Blob([book.cover.data], { type: book.cover.type }));
     }
+    // Object URLs are an external resource that must be revoked, which is
+    // what an effect with cleanup is for.
+    // oxlint-disable-next-line react/set-state-in-effect
     setCovers(urls);
     return () => {
       for (const url of Object.values(urls)) URL.revokeObjectURL(url);

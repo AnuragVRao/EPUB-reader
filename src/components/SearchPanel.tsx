@@ -26,7 +26,9 @@ export default function SearchPanel({ onSearch, onSelect, onClearMatch }: Search
 
   // Stop any in-flight search and take the mark off the page when the panel closes.
   const clearMatchRef = useRef(onClearMatch);
-  clearMatchRef.current = onClearMatch;
+  useEffect(() => {
+    clearMatchRef.current = onClearMatch;
+  }, [onClearMatch]);
   useEffect(
     () => () => {
       abortRef.current?.abort();

@@ -412,13 +412,22 @@ function SavedData({
     }
   }, [onList]);
 
+  // The first load; `refresh` reloads after a change. State is only set once
+  // the list arrives.
   useEffect(() => {
     mountedRef.current = true;
-    void refresh();
+    onList().then(
+      (list) => {
+        if (mountedRef.current) setBooks(list);
+      },
+      () => {
+        if (mountedRef.current) setBooks('error');
+      },
+    );
     return () => {
       mountedRef.current = false;
     };
-  }, [refresh]);
+  }, [onList]);
 
   const remove = async (bookId: string) => {
     try {
