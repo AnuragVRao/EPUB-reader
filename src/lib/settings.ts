@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   customColors: DEFAULT_CUSTOM_COLORS,
   speechRate: 1,
   speechVoice: '',
+  dictionaryEnabled: false,
   tocOpen: true,
   tocWidth: 300,
 };
@@ -63,6 +64,7 @@ function sanitize(raw: unknown): ReaderSettings {
     customColors: sanitizeCustomColors(s.customColors),
     speechRate: numberIn(s.speechRate, MIN_SPEECH_RATE, MAX_SPEECH_RATE, d.speechRate),
     speechVoice: typeof s.speechVoice === 'string' ? s.speechVoice.slice(0, 500) : d.speechVoice,
+    dictionaryEnabled: bool(s.dictionaryEnabled, d.dictionaryEnabled),
     tocOpen: bool(s.tocOpen, d.tocOpen),
     tocWidth: numberIn(s.tocWidth, 200, 520, d.tocWidth),
   };

@@ -1590,3 +1590,58 @@ body {
   font-size: 0.85rem;
   line-height: 1.45;
 }
+
+/* Dictionary */
+
+.definition {
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+
+.definition__term {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+.definition__message {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.definition__found {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.definition__entry h3 {
+  margin: 10px 0 4px;
+  font-size: 0.85rem;
+}
+
+.definition__language {
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+.definition__entry ol {
+  margin: 0;
+  padding-left: 1.4em;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.definition__entry li + li {
+  margin-top: 4px;
+}
+
+.definition__source {
+  margin: 14px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.definition__source a {
+  color: var(--accent);
+}

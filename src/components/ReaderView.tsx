@@ -14,6 +14,8 @@ import SelectionBar from './SelectionBar';
 import NotePopup from './NotePopup';
 import ImageZoom from './ImageZoom';
 import ReadAloudBar from './ReadAloudBar';
+import DefinitionPopup from './DefinitionPopup';
+import { useDictionary } from '../hooks/useDictionary';
 
 interface ReaderViewProps {
   data: ArrayBuffer;
@@ -40,6 +42,7 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const rtl = reader.direction === 'rtl';
+  const dictionary = useDictionary(settings.dictionaryEnabled, reader.language);
   const percentLabel = reader.percentage === null ? '' : `${Math.round(reader.percentage * 100)}%`;
 
   const timeLeftLabel = reader.timeLeft ? `${formatDuration(reader.timeLeft.chapter)} left in chapter` : '';
@@ -244,10 +247,24 @@ export default function ReaderView({ data, fallbackTitle, onClose }: ReaderViewP
           <SelectionBar
             selection={reader.selection}
             onHighlight={reader.addHighlight}
+            onDefine={(term) => {
+              reader.clearSelection();
+              dictionary.define(term);
+            }}
             onDismiss={reader.clearSelection}
           />
           {reader.note && <NotePopup note={reader.note} onClose={reader.dismissNote} onGoTo={reader.goToHref} />}
           {reader.zoomedImage && <ImageZoom image={reader.zoomedImage} onClose={reader.dismissZoom} />}
+          {dictionary.state.status !== 'closed' && (
+            <DefinitionPopup
+              state={dictionary.state}
+              onEnable={() => {
+                updateSettings({ dictionaryEnabled: true });
+                dictionary.continueAfterConsent();
+              }}
+              onClose={dictionary.close}
+            />
+          )}
           {reader.readAloud.status !== 'idle' && (
             <ReadAloudBar
               paused={reader.readAloud.status === 'paused'}

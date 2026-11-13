@@ -67,6 +67,14 @@ describe('loadSettings', () => {
     });
   });
 
+  it('keeps dictionary lookups off unless explicitly turned on', () => {
+    expect(DEFAULT_SETTINGS.dictionaryEnabled).toBe(false);
+    items.set(SETTINGS_KEY, JSON.stringify({ dictionaryEnabled: 'yes' }));
+    expect(loadSettings().dictionaryEnabled).toBe(false);
+    items.set(SETTINGS_KEY, JSON.stringify({ dictionaryEnabled: true }));
+    expect(loadSettings().dictionaryEnabled).toBe(true);
+  });
+
   it('validates the read-aloud settings', () => {
     items.set(SETTINGS_KEY, JSON.stringify({ speechRate: 1.5, speechVoice: 'Google UK English Female' }));
     expect(loadSettings()).toMatchObject({ speechRate: 1.5, speechVoice: 'Google UK English Female' });

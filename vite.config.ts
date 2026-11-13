@@ -2,11 +2,13 @@ import { defineConfig } from 'vitest/config'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { serviceWorker } from './pwa/vite-plugin-sw.ts'
+import { DICTIONARY_ORIGIN } from './src/lib/dictionary.ts'
 
 // EPUBs are untrusted HTML rendered in same-origin iframes, which inherit this
 // policy. It keeps the "nothing leaves the browser" promise enforceable: no
 // script but the app's own bundle, and no request to any other origin - a
-// book cannot load a remote image, font or stylesheet, or phone home.
+// book cannot load a remote image, font or stylesheet, or phone home. The
+// only remote address allowed is the dictionary's, for `fetch` alone.
 // `blob:`/`data:` are needed because epub.js rewrites a book's own images,
 // fonts and stylesheets to blob URLs, and 'unsafe-inline' styles because book
 // markup and epub.js's theme injection both rely on inline CSS.
@@ -17,7 +19,9 @@ const CONTENT_SECURITY_POLICY = [
   "img-src 'self' blob: data:",
   "font-src 'self' blob: data:",
   "media-src 'self' blob: data:",
-  "connect-src 'self' blob: data:",
+  // The opt-in dictionary is the one exception to "nothing leaves the
+  // browser". Book iframes inherit this too, but can't run script to use it.
+  `connect-src 'self' blob: data: ${DICTIONARY_ORIGIN}`,
   "frame-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

@@ -6,6 +6,7 @@ import type { ReaderSettings, ThemeSetting, FontFamily, FlowMode, SpreadMode } f
 import { MAX_PAGE_MARGIN, PARAGRAPH_SPACINGS } from '../lib/typography';
 import { readAloudAvailable } from '../hooks/readAloud';
 import { MAX_SPEECH_RATE, MIN_SPEECH_RATE } from '../lib/speech';
+import { DICTIONARY_NAME, DICTIONARY_ORIGIN } from '../lib/dictionary';
 import { DEFAULT_CUSTOM_COLORS, MIN_CONTRAST, contrastRatio, type CustomColors } from '../lib/customTheme';
 
 interface SettingsPanelProps {
@@ -197,6 +198,22 @@ export default function SettingsPanel({
           />
         </section>
       )}
+
+      <section className="settings-section">
+        <h3>Dictionary</h3>
+        <label className="switch-row">
+          <span>Look up words on {DICTIONARY_NAME}</span>
+          <input
+            type="checkbox"
+            checked={settings.dictionaryEnabled}
+            onChange={(e) => onChange({ dictionaryEnabled: e.target.checked })}
+          />
+        </label>
+        <p className="clear-data__hint">
+          Off by default. When on, selecting a word offers Define, and only that word is sent to{' '}
+          {new URL(DICTIONARY_ORIGIN).host}.
+        </p>
+      </section>
 
       <section className="settings-section">
         <h3>Reading mode</h3>

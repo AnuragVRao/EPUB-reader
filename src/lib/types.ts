@@ -28,6 +28,8 @@ export interface ReaderSettings {
   speechRate: number;
   /** `voiceURI` of the chosen read-aloud voice, or '' to match the book's language. */
   speechVoice: string;
+  /** Opt-in: look words up on Wiktionary, which sends the word over the network. */
+  dictionaryEnabled: boolean;
   tocOpen: boolean;
   tocWidth: number;
 }

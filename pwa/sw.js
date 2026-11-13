@@ -56,7 +56,8 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   // Only the site's own files. blob: and data: URLs (book content) never
-  // reach here, and nothing else is ever requested.
+  // reach here; dictionary lookups (the one cross-origin request, opt-in) go
+  // straight to the network and are never cached.
   if (!request.url.startsWith(SCOPE)) return;
 
   const isPageLoad = request.mode === 'navigate';
